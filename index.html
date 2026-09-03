@@ -8,7 +8,7 @@
 </head>
 <body>
 
-  <!-- SCREEN 1: RAW AUTH SCREEN (LOGIN / SIGN UP) -->
+  <!-- SCREEN 1: RAW AUTH SCREEN -->
   <div id="auth-screen">
     <div class="auth-box">
       <div id="auth-choices">
@@ -30,7 +30,7 @@
     </div>
   </div>
 
-  <!-- SCREEN 2: MAIN MENU (Revealed after auth) -->
+  <!-- SCREEN 2: MAIN MENU -->
   <div id="main-menu" style="display: none;">
     <div id="account-status">
       Logged in as: <span id="current-username" style="color: #4CAF50;">Guest</span>
@@ -49,11 +49,10 @@
       </div>
     </div>
 
-    <!-- VERSION TAG (CLICKABLE TO VIEW CHANGELOG) -->
     <div id="version-tag" onclick="openChangelog()">vA1.0.1</div>
   </div>
 
-  <!-- CHANGELOG MODAL OVERLAY -->
+  <!-- CHANGELOG MODAL -->
   <div id="changelog-modal" style="display: none;">
     <div class="changelog-box">
       <div class="changelog-header">
@@ -66,7 +65,7 @@
     </div>
   </div>
 
-  <!-- SCREEN 3: GAMEPLAY & LOBBY VIEWPORT -->
+  <!-- SCREEN 3: GAMEPLAY & VIEWPORT -->
   <div id="main-layout" style="display: none;">
     
     <!-- LEFT PANEL: UPGRADES -->
@@ -105,7 +104,7 @@
         <input type="text" id="chat-input" placeholder="Press Enter to chat..." maxlength="60" />
       </div>
 
-      <!-- MULTIPLAYER LOBBY MODAL -->
+      <!-- MULTIPLAYER LOBBY -->
       <div id="lobby-screen" style="display: none;">
         <h2 id="lobby-title">MULTIPLAYER LOBBY</h2>
         <p id="lobby-status">Connecting to universal server...</p>
@@ -113,7 +112,15 @@
         <button id="lobby-ready-btn" onclick="sendLobbyReady()">Ready Up</button>
       </div>
 
-      <!-- INTERMISSION SCREEN (3-CARD DRAFT) -->
+      <!-- TEAM WIPE DEATH SCREEN -->
+      <div id="team-wipe-screen" style="display: none;">
+        <h2 style="color: #ff3333; font-size: 26px; margin-bottom: 6px;">TEAM WIPED</h2>
+        <p style="color: #bbb; font-size: 13px; margin-bottom: 16px;">All snakes have perished. No respawns remaining.</p>
+        <div style="font-size: 14px; font-weight: bold; color: #ffd700; margin-bottom: 24px;">REACHED LEVEL <span id="wipe-level">1</span></div>
+        <p style="font-size: 11px; color: #777;">Returning to lobby...</p>
+      </div>
+
+      <!-- 3-CARD DRAFT INTERMISSION -->
       <div id="overlay-screen">
         <div id="draft-logo-container">
           <img id="draft-logo" class="draft-logo-img" src="Icons/upgrades.png" alt="Draft Phase" onerror="this.onerror=null; this.src='Icons/Placeholder.png';" />
