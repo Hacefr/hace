@@ -2,10 +2,14 @@ const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
 const TILE_SIZE = 34;       
-const BASE_WORLD_SIZE = 24; 
-const WORLD_GROWTH = 6;     
+let worldGrid = 24;
 
-let worldGrid = BASE_WORLD_SIZE;
+// GAME STATE
+let isMultiplayer = false;
+let socket = null;
+let myPlayerId = null;
+let serverPlayers = {};
+
 let snake = [];
 let dir = { x: 0, y: 0 };
 let nextDir = { x: 0, y: 0 };
@@ -21,13 +25,10 @@ let level = 1;
 
 let camera = { x: 0, y: 0 };
 
-let upgrades = { 
-  shoes: 0, dash: 0, bridge: 0, poison: 0, eyes: 0, shield: 0, thermo: 0
-};
-
+// UPGRADES
+let upgrades = { shoes: 0, dash: 0, bridge: 0, poison: 0, eyes: 0, shield: 0, thermo: 0 };
 let currentShields = 0;
 let dashCharges = 0;
-let dashCooldownTimer = null;
 let isBridging = false;
 let bridgeStamina = 100;
 let bridgeCooldown = 0;
@@ -35,21 +36,16 @@ let bridgePlanks = new Set();
 
 let activeCurses = new Set();
 let heat = 0;
-
 let decayTimer = null;
 let lastTick = 0;
 
-let totalPlayers = 3;
-let votesReady = 0;
-let isLocalPlayerReady = false;
+// PURPLE KING ACHIEVEMENT TRACKER
+let purpleDotsEatenThisRun = 0;
+let isPurpleKingUnlocked = localStorage.getItem("skin_purple_king") === "true";
 
-// SAFE ICON LOADER: If file is missing, it will NEVER 404
 function getIconHtml(name, alt) {
-  // Built-in SVG placeholder data URI
   const fallbackSvg = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='44' height='44' viewBox='0 0 44 44'><rect width='44' height='44' fill='%2322222e'/><text x='22' y='28' font-size='18' text-anchor='middle' fill='%23666'>?</text></svg>";
-
-  return `<img src="Icons/${name}.png" class="item-icon-img" alt="${alt}" 
-    onerror="this.onerror=null; this.src='Icons/Placeholder.png'; this.onerror=function(){this.src='${fallbackSvg}';};">`;
+  return `<img src="Icons/${name}.png" class="item-icon-img" alt="${alt}" onerror="this.onerror=null; this.src='Icons/Placeholder.png'; this.onerror=function(){this.src='${fallbackSvg}';};">`;
 }
 
 function resizeCanvas() {
@@ -59,22 +55,97 @@ function resizeCanvas() {
 }
 window.addEventListener("resize", resizeCanvas);
 
-// CALLED WHEN CLICKING 'SINGLEPLAYER'
+// SINGLEPLAYER LAUNCH
 function startSingleplayer() {
+  isMultiplayer = false;
   document.getElementById("main-menu").style.display = "none";
+  document.getElementById("main-layout").style.display = "flex";
+  document.getElementById("chat-container").style.display = "none";
   phase = "COLLECT";
   resizeCanvas();
   initLevel();
   requestAnimationFrame(render);
 }
 
+// MULTIPLAYER LAUNCH (Connects to your Render server)
+function startMultiplayer() {
+  isMultiplayer = true;
+  document.getElementById("main-menu").style.display = "none";
+  document.getElementById("main-layout").style.display = "flex";
+  document.getElementById("chat-container").style.display = "flex";
+  setBanner("Connecting to live server...", "#ffd700");
+
+  // YOUR LIVE RENDER SERVER LINK
+  socket = new WebSocket("wss://hace-hsrp.onrender.com");
+
+  socket.onopen = () => {
+    setBanner("Connected to Universal Server!", "#4CAF50");
+    resizeCanvas();
+    requestAnimationFrame(render);
+  };
+
+  socket.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+
+    if (data.type === "INIT") {
+      myPlayerId = data.yourId;
+      serverPlayers = data.players;
+      worldGrid = data.worldGrid;
+      level = data.level;
+      phase = data.phase;
+      normalDots = data.normalDots;
+      purpleDots = data.purpleDots;
+      if (data.isSpectator) {
+        setBanner("Run in progress! Spectating until Intermission...", "#ffd700");
+      }
+    }
+
+    if (data.type === "LEVEL_START") {
+      level = data.level;
+      worldGrid = data.worldGrid;
+      serverPlayers = data.players;
+      normalDots = data.normalDots;
+      purpleDots = data.purpleDots;
+      phase = "COLLECT";
+      document.getElementById("overlay-screen").style.display = "none";
+      setBanner(`Level ${level}: Clear red dots!`, "#ff5555");
+    }
+
+    if (data.type === "TICK") {
+      serverPlayers = data.players;
+      normalDots = data.normalDots;
+    }
+
+    if (data.type === "GREED_START") {
+      phase = "GREED";
+      exit = data.exit;
+      setBanner("EXIT OPEN! ESCAPE OR GREED FOR GOLD!", "#ffd700");
+    }
+
+    if (data.type === "INTERMISSION_START") {
+      triggerIntermission();
+    }
+
+    if (data.type === "VOTE_UPDATE") {
+      document.getElementById("vote-count").innerText = data.readyCount;
+      document.getElementById("vote-total").innerText = data.total;
+    }
+
+    if (data.type === "CHAT") {
+      addChatMessage(data.sender, data.text);
+    }
+  };
+
+  socket.onclose = () => {
+    setBanner("Disconnected from server. Reconnecting in 3s...", "#ff3333");
+  };
+}
+
 function initLevel() {
   clearInterval(decayTimer);
   document.getElementById("overlay-screen").style.display = "none";
-  isLocalPlayerReady = false;
-  votesReady = 0;
 
-  worldGrid = BASE_WORLD_SIZE + (level - 1) * WORLD_GROWTH;
+  worldGrid = 24 + (level - 1) * 6;
   let mid = Math.floor(worldGrid / 2);
   
   snake = [{ x: mid, y: mid }, { x: mid, y: mid + 1 }];
@@ -238,32 +309,20 @@ function triggerIntermission() {
     shop.style.display = "none";
   }
 
-  isLocalPlayerReady = false;
-  votesReady = 1;
-  updateVoteUI();
-}
-
-function updateVoteUI() {
-  document.getElementById("vote-count").innerText = votesReady;
-  document.getElementById("vote-total").innerText = totalPlayers;
   const btn = document.getElementById("ready-btn");
-  btn.innerText = isLocalPlayerReady ? "Ready! (Waiting for votes...)" : "Ready Up";
-  btn.className = isLocalPlayerReady ? "ready" : "";
+  btn.innerText = "Ready Up";
+  btn.className = "";
 }
 
 function toggleReadyVote() {
-  if (!isLocalPlayerReady) {
-    isLocalPlayerReady = true;
-    votesReady++;
-    updateVoteUI();
-
-    let needed = Math.ceil(totalPlayers * (2 / 3));
-    if (votesReady >= needed) {
-      setTimeout(() => {
-        level++;
-        initLevel();
-      }, 500);
-    }
+  if (isMultiplayer && socket) {
+    socket.send(JSON.stringify({ type: "VOTE_READY" }));
+    const btn = document.getElementById("ready-btn");
+    btn.innerText = "Ready! (Waiting for votes...)";
+    btn.className = "ready";
+  } else {
+    level++;
+    initLevel();
   }
 }
 
@@ -379,45 +438,6 @@ function updatePanels() {
   }
 }
 
-function useDash() {
-  if (upgrades.dash === 0 || dashCharges <= 0 || (dir.x === 0 && dir.y === 0)) return;
-  dashCharges--;
-  updateUI();
-
-  let dashDist = activeCurses.has("nothing") ? 1 : 3;
-  for (let step = 0; step < dashDist; step++) {
-    const head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
-    if (head.x < 0 || head.x >= worldGrid || head.y < 0 || head.y >= worldGrid) break;
-    snake.unshift(head);
-    snake.pop();
-  }
-
-  if (!dashCooldownTimer) {
-    let rechargeTime = activeCurses.has("nothing") ? 12000 : 7000;
-    dashCooldownTimer = setInterval(() => {
-      if (dashCharges < upgrades.dash) {
-        dashCharges++;
-        updateUI();
-      } else {
-        clearInterval(dashCooldownTimer);
-        dashCooldownTimer = null;
-      }
-    }, rechargeTime);
-  }
-}
-
-function startBridging() {
-  if (upgrades.bridge === 0 || bridgeStamina <= 10 || isBridging || bridgeCooldown > 0) return;
-  isBridging = true;
-}
-
-function stopBridging() {
-  if (isBridging) {
-    isBridging = false;
-    bridgeCooldown = 100;
-  }
-}
-
 function tick() {
   if (phase === "GAMEOVER" || phase === "INTERMISSION" || phase === "MENU") return;
 
@@ -432,7 +452,7 @@ function tick() {
   let drainRate = activeCurses.has("nothing") ? 8 : 4;
   if (isBridging) {
     bridgeStamina -= drainRate;
-    if (bridgeStamina <= 0) { bridgeStamina = 0; stopBridging(); }
+    if (bridgeStamina <= 0) { bridgeStamina = 0; isBridging = false; }
   } else {
     if (bridgeCooldown > 0) bridgeCooldown -= 2;
     else if (bridgeStamina < 100) bridgeStamina = Math.min(100, bridgeStamina + 1);
@@ -440,6 +460,11 @@ function tick() {
 
   dir = nextDir;
   if (dir.x === 0 && dir.y === 0) return;
+
+  // If multiplayer, tell Render server our direction!
+  if (isMultiplayer && socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({ type: "MOVE", dir }));
+  }
 
   const head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
 
@@ -451,12 +476,21 @@ function tick() {
     if (!tryShieldAbsorb(head.x, head.y)) return gameOver("Swallowed by the void!");
   }
 
+  // POISON CENTER CHECK + PURPLE KING ACHIEVEMENT TRACKER!
   let purpleIdx = purpleDots.findIndex(p => p.x === head.x && p.y === head.y);
   if (purpleIdx !== -1) {
     let safeChance = upgrades.poison * 0.20;
     if (Math.random() < safeChance) {
       purpleDots.splice(purpleIdx, 1);
-      setBanner("POISON RESISTED! (Safe)", "#a29bfe");
+      purpleDotsEatenThisRun++;
+      setBanner(`POISON RESISTED! (${purpleDotsEatenThisRun}/5 for Purple King)`, "#a29bfe");
+
+      // Check Purple King Unlock
+      if (purpleDotsEatenThisRun >= 5 && !isPurpleKingUnlocked) {
+        isPurpleKingUnlocked = true;
+        localStorage.setItem("skin_purple_king", "true");
+        setBanner("ACHIEVEMENT UNLOCKED: PURPLE KING SKIN!", "#ffd700");
+      }
     } else {
       return gameOver("Touched a poisonous Nullscape dot!");
     }
@@ -505,26 +539,6 @@ function updateUI() {
   document.getElementById("level").innerText = level;
   document.getElementById("dots").innerText = normalDots.length;
   document.getElementById("coins").innerText = coins;
-
-  const dashSlot = document.getElementById("dash-hud");
-  if (upgrades.dash > 0) {
-    dashSlot.classList.add("active");
-    document.getElementById("dash-val").innerText = `${dashCharges} / ${upgrades.dash}`;
-  }
-
-  const bridgeSlot = document.getElementById("bridge-hud");
-  if (upgrades.bridge > 0) {
-    bridgeSlot.classList.add("active");
-    let txt = bridgeCooldown > 0 ? `COOLING (${Math.ceil(bridgeCooldown)}%)` : `${Math.ceil(bridgeStamina)}%`;
-    document.getElementById("bridge-val").innerText = txt;
-  }
-
-  const shieldSlot = document.getElementById("shield-hud");
-  if (upgrades.shield > 0) {
-    shieldSlot.style.display = "block";
-    shieldSlot.classList.add("active");
-    document.getElementById("shield-val").innerText = `${currentShields} / ${upgrades.shield}`;
-  }
 }
 
 function render(timestamp) {
@@ -538,8 +552,8 @@ function render(timestamp) {
     lastTick = timestamp;
   }
 
-  let targetCamX = snake[0].x * TILE_SIZE + TILE_SIZE / 2;
-  let targetCamY = snake[0].y * TILE_SIZE + TILE_SIZE / 2;
+  let targetCamX = snake[0] ? snake[0].x * TILE_SIZE + TILE_SIZE / 2 : 0;
+  let targetCamY = snake[0] ? snake[0].y * TILE_SIZE + TILE_SIZE / 2 : 0;
   camera.x += (targetCamX - camera.x) * 0.15;
   camera.y += (targetCamY - camera.y) * 0.15;
 
@@ -549,9 +563,11 @@ function render(timestamp) {
   ctx.save();
   ctx.translate(canvas.width / 2 - camera.x, canvas.height / 2 - camera.y);
 
+  // Floor
   ctx.fillStyle = "#14141e";
   ctx.fillRect(0, 0, worldGrid * TILE_SIZE, worldGrid * TILE_SIZE);
 
+  // Grid
   ctx.strokeStyle = "rgba(255, 255, 255, 0.03)";
   ctx.lineWidth = 1;
   for (let i = 0; i <= worldGrid; i++) {
@@ -559,6 +575,7 @@ function render(timestamp) {
     ctx.beginPath(); ctx.moveTo(0, i * TILE_SIZE); ctx.lineTo(worldGrid * TILE_SIZE, i * TILE_SIZE); ctx.stroke();
   }
 
+  // Decay
   decayingTiles.forEach((tile, key) => {
     let [x, y] = key.split(",").map(Number);
     if (tile.stage === 1) ctx.fillStyle = "#3e3e50";
@@ -567,108 +584,115 @@ function render(timestamp) {
     ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
   });
 
+  // Planks
   ctx.fillStyle = "#00d2d3";
   bridgePlanks.forEach(key => {
     let [x, y] = key.split(",").map(Number);
     ctx.fillRect(x * TILE_SIZE + 2, y * TILE_SIZE + 2, TILE_SIZE - 4, TILE_SIZE - 4);
   });
 
+  // Exit
   if (exit) {
     ctx.fillStyle = "#ffd700";
     ctx.fillRect(exit.x * TILE_SIZE + 2, exit.y * TILE_SIZE + 2, TILE_SIZE - 4, TILE_SIZE - 4);
   }
 
+  // Dots
   ctx.fillStyle = "#ff4757";
   normalDots.forEach(d => {
     ctx.beginPath(); ctx.arc(d.x * TILE_SIZE + TILE_SIZE / 2, d.y * TILE_SIZE + TILE_SIZE / 2, TILE_SIZE / 3.5, 0, Math.PI * 2); ctx.fill();
   });
 
+  // Poison Dots
   ctx.fillStyle = "#9b59b6";
   purpleDots.forEach(d => {
     ctx.beginPath(); ctx.arc(d.x * TILE_SIZE + TILE_SIZE / 2, d.y * TILE_SIZE + TILE_SIZE / 2, TILE_SIZE / 3.2, 0, Math.PI * 2); ctx.fill();
   });
 
+  // Coolant
   ctx.fillStyle = "#00d2d3";
   coolButtons.forEach(d => {
     ctx.fillRect(d.x * TILE_SIZE + 4, d.y * TILE_SIZE + 4, TILE_SIZE - 8, TILE_SIZE - 8);
   });
 
+  // Yellow Coins
   ctx.fillStyle = "#ffd32a";
   yellowDots.forEach(d => {
     ctx.beginPath(); ctx.arc(d.x * TILE_SIZE + TILE_SIZE / 2, d.y * TILE_SIZE + TILE_SIZE / 2, TILE_SIZE / 2.8, 0, Math.PI * 2); ctx.fill();
   });
 
+  // DRAW LOCAL PLAYER (Or Purple King if equipped!)
   snake.forEach((part, i) => {
-    if (isBridging) ctx.fillStyle = i === 0 ? "#00cec9" : "#81ecec";
-    else ctx.fillStyle = i === 0 ? "#2ed573" : "#7bed9f";
-    ctx.fillRect(part.x * TILE_SIZE + 1, part.y * TILE_SIZE + 1, TILE_SIZE - 2, TILE_SIZE - 2);
-
-    if (i === 0 && currentShields > 0) {
-      ctx.strokeStyle = "#3498db";
-      ctx.lineWidth = 3;
-      ctx.strokeRect(part.x * TILE_SIZE - 2, part.y * TILE_SIZE - 2, TILE_SIZE + 4, TILE_SIZE + 4);
+    if (isPurpleKingUnlocked) {
+      ctx.fillStyle = i === 0 ? "#8e44ad" : "#a29bfe"; // Royal Purple King skin!
+    } else {
+      ctx.fillStyle = i === 0 ? "#2ed573" : "#7bed9f"; // Default Green
     }
+    ctx.fillRect(part.x * TILE_SIZE + 1, part.y * TILE_SIZE + 1, TILE_SIZE - 2, TILE_SIZE - 2);
   });
+
+  // DRAW OTHER MULTIPLAYER PLAYERS!
+  if (isMultiplayer) {
+    Object.values(serverPlayers).forEach(p => {
+      if (p.id !== myPlayerId && p.alive && p.snake.length > 0) {
+        p.snake.forEach((part, i) => {
+          ctx.fillStyle = i === 0 ? "#e74c3c" : "#ff7675"; // Other players render Red!
+          ctx.fillRect(part.x * TILE_SIZE + 1, part.y * TILE_SIZE + 1, TILE_SIZE - 2, TILE_SIZE - 2);
+        });
+      }
+    });
+  }
 
   ctx.strokeStyle = "#ff3838";
   ctx.lineWidth = 4;
   ctx.strokeRect(0, 0, worldGrid * TILE_SIZE, worldGrid * TILE_SIZE);
 
   ctx.restore();
-
-  if (exit && phase === "GREED") drawRadar(exit, "#ffd700");
-  if (upgrades.eyes > 0 && activeCurses.has("temperature")) {
-    coolButtons.forEach(c => drawRadar(c, "#00d2d3"));
-  }
-
   requestAnimationFrame(render);
 }
 
-function drawRadar(target, color) {
-  let screenX = (target.x * TILE_SIZE + TILE_SIZE / 2) - camera.x + canvas.width / 2;
-  let screenY = (target.y * TILE_SIZE + TILE_SIZE / 2) - camera.y + canvas.height / 2;
-  let isOffscreen = (screenX < 30 || screenX > canvas.width - 30 || screenY < 30 || screenY > canvas.height - 30);
-
-  if (isOffscreen) {
-    let angle = Math.atan2(screenY - canvas.height / 2, screenX - canvas.width / 2);
-    let edgeDist = Math.min(canvas.width, canvas.height) / 2 - 25;
-    let indicatorX = canvas.width / 2 + Math.cos(angle) * edgeDist;
-    let indicatorY = canvas.height / 2 + Math.sin(angle) * edgeDist;
-
-    ctx.save();
-    ctx.translate(indicatorX, indicatorY);
-    ctx.rotate(angle);
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.moveTo(10, 0); ctx.lineTo(-8, -7); ctx.lineTo(-8, 7);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
+// CHAT SYSTEM
+const chatInput = document.getElementById("chat-input");
+chatInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && chatInput.value.trim() !== "") {
+    if (isMultiplayer && socket) {
+      socket.send(JSON.stringify({ type: "CHAT", text: chatInput.value.trim() }));
+    }
+    chatInput.value = "";
+    chatInput.blur();
   }
+});
+
+function addChatMessage(sender, text) {
+  const box = document.getElementById("chat-messages");
+  const msg = document.createElement("div");
+  msg.innerHTML = `<span style="color:#ffd700;">${sender}:</span> ${text}`;
+  box.appendChild(msg);
+  box.scrollTop = box.scrollHeight;
 }
 
 window.addEventListener("keydown", (e) => {
+  if (document.activeElement === chatInput) return; // Typing in chat
+
+  if (e.key === "Enter") {
+    chatInput.focus();
+    return;
+  }
+
   if (phase === "MENU") return;
 
   if (e.code === "Space") {
     if (phase === "GAMEOVER") {
-      coins = 0; level = 1;
+      coins = 0; level = 1; purpleDotsEatenThisRun = 0;
       upgrades = { shoes: 0, dash: 0, bridge: 0, poison: 0, eyes: 0, shield: 0, thermo: 0 };
       activeCurses.clear();
       initLevel();
       return;
     }
-    if (phase !== "INTERMISSION") startBridging();
   }
-
-  if (e.key === "Shift" && phase !== "INTERMISSION") useDash();
 
   if (["ArrowUp", "KeyW"].includes(e.code) && dir.y === 0) nextDir = { x: 0, y: -1 };
   if (["ArrowDown", "KeyS"].includes(e.code) && dir.y === 0) nextDir = { x: 0, y: 1 };
   if (["ArrowLeft", "KeyA"].includes(e.code) && dir.x === 0) nextDir = { x: -1, y: 0 };
   if (["ArrowRight", "KeyD"].includes(e.code) && dir.x === 0) nextDir = { x: 1, y: 0 };
-});
-
-window.addEventListener("keyup", (e) => {
-  if (e.code === "Space") stopBridging();
 });
