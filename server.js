@@ -5,6 +5,9 @@ const wss = new WebSocketServer({ port: PORT });
 
 console.log(`Universal Multiplayer Server running on port ${PORT}`);
 
+// SERVER-SIDED ACCOUNTS DATABASE (Tracks levels and EXP securely)
+let serverAccounts = {}; // username -> { password, accountLevel, exp }
+
 let players = {};
 let phase = "LOBBY"; // "LOBBY", "COLLECT", "GREED", "INTERMISSION", "TEAM_WIPED"
 let level = 1;
@@ -24,6 +27,36 @@ function broadcast(data) {
   wss.clients.forEach((client) => {
     if (client.readyState === WebSocket.OPEN) {
       client.send(msg);
+    }
+  });
+}
+
+function getExpRequired(lvl) {
+  return lvl * 60; // Level 1->2 takes 60 EXP (4 floors), Level 2->3 takes 120 EXP, etc.
+}
+
+function awardAccountExp(username, amount) {
+  if (!username || username.startsWith("Guest_") || !serverAccounts[username]) return;
+
+  const acc = serverAccounts[username];
+  acc.exp += amount;
+
+  while (acc.exp >= getExpRequired(acc.accountLevel)) {
+    acc.exp -= getExpRequired(acc.accountLevel);
+    acc.accountLevel++;
+    console.log(`User ${username} leveled up to Account Level ${acc.accountLevel}!`);
+  }
+
+  // Find player socket and send updated profile
+  Object.values(players).forEach(p => {
+    if (p.accountUser === username && p.ws && p.ws.readyState === WebSocket.OPEN) {
+      p.accountLevel = acc.accountLevel;
+      p.ws.send(JSON.stringify({
+        type: "ACCOUNT_UPDATE",
+        accountLevel: acc.accountLevel,
+        exp: acc.exp,
+        expNeeded: getExpRequired(acc.accountLevel)
+      }));
     }
   });
 }
@@ -62,7 +95,6 @@ function startLevel() {
   let mid = Math.floor(worldGrid / 2);
   let offset = 0;
 
-  // Revive and spawn all players at center
   Object.values(players).forEach(p => {
     p.alive = true;
     p.escaped = false;
@@ -103,11 +135,14 @@ function checkRoundCompletion() {
     const anyEscaped = playerList.some(p => p.escaped);
 
     if (anyEscaped) {
-      // Advance to Intermission
+      // Award 15 EXP to all authenticated players who survived or participated!
+      playerList.forEach(p => {
+        if (p.accountUser) awardAccountExp(p.accountUser, 15);
+      });
+
       phase = "INTERMISSION";
       broadcast({ type: "INTERMISSION_START", level });
     } else {
-      // Team Wipe: Reset level to 1
       phase = "TEAM_WIPED";
       broadcast({
         type: "TEAM_WIPED",
@@ -130,6 +165,8 @@ wss.on('connection', (ws) => {
   players[id] = {
     id,
     name: `Snake_${id.slice(-2)}`,
+    accountUser: null,
+    accountLevel: 1,
     snake: [],
     dir: { x: 0, y: 0 },
     alive: false,
@@ -157,6 +194,27 @@ wss.on('connection', (ws) => {
 
       players[id].lastActive = Date.now();
 
+      // SERVER AUTHENTICATION & ACCOUNT DATA
+      if (data.type === "LOGIN" || data.type === "SIGNUP") {
+        const u = data.username.trim();
+        if (!serverAccounts[u]) {
+          serverAccounts[u] = { password: data.password, accountLevel: 1, exp: 0 };
+        }
+        const acc = serverAccounts[u];
+        players[id].accountUser = u;
+        players[id].name = u;
+        players[id].accountLevel = acc.accountLevel;
+
+        ws.send(JSON.stringify({
+          type: "AUTH_SUCCESS",
+          username: u,
+          accountLevel: acc.accountLevel,
+          exp: acc.exp,
+          expNeeded: getExpRequired(acc.accountLevel)
+        }));
+        broadcast({ type: "PLAYER_UPDATE", players: getPublicPlayers() });
+      }
+
       if (data.type === "MOVE" && players[id].alive && !players[id].escaped) {
         players[id].dir = data.dir;
       }
@@ -178,7 +236,6 @@ wss.on('connection', (ws) => {
         }
       }
 
-      // Individual extraction
       if (data.type === "TOUCH_EXIT" && phase === "GREED" && players[id].alive && !players[id].escaped) {
         players[id].escaped = true;
         players[id].alive = false;
@@ -194,7 +251,6 @@ wss.on('connection', (ws) => {
         checkRoundCompletion();
       }
 
-      // Individual death
       if (data.type === "PLAYER_DIED" && players[id].alive) {
         players[id].alive = false;
         players[id].snake = [];
@@ -255,14 +311,12 @@ function checkVotes() {
   });
 
   if (readyCount >= needed && activeList.length > 0) {
-    if (phase === "INTERMISSION") {
-      level++; // Advance level count
-    }
+    if (phase === "INTERMISSION") level++;
     startLevel();
   }
 }
 
-// Inactivity monitor
+// Inactivity Monitor
 setInterval(() => {
   const now = Date.now();
   Object.values(players).forEach(p => {
@@ -282,6 +336,7 @@ function getPublicPlayers() {
     clean[k] = {
       id: players[k].id,
       name: players[k].name,
+      accountLevel: players[k].accountLevel || 1,
       snake: players[k].snake,
       dir: players[k].dir,
       alive: players[k].alive,
@@ -292,7 +347,6 @@ function getPublicPlayers() {
   return clean;
 }
 
-// 100ms Sync
 setInterval(() => {
   if (phase === "COLLECT" || phase === "GREED") {
     broadcast({
