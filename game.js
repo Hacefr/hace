@@ -8,6 +8,7 @@ window.addEventListener("DOMContentLoaded", () => {
   if (currentUser) {
     proceedToMainMenu(currentUser);
   }
+  checkChangelog();
 });
 
 function showAuthForm(mode) {
@@ -61,7 +62,54 @@ function logout() {
 }
 
 // ==========================================
-// 2. CORE GAME ENGINE & MULTIPLAYER LOBBY
+// 2. CHANGELOG LOADER (READS CHANGELOG.JSON)
+// ==========================================
+let cachedChangelog = null;
+
+async function checkChangelog() {
+  try {
+    // Cache buster ensures players always get fresh patch notes instantly
+    const res = await fetch(`changelog.json?t=${Date.now()}`);
+    if (res.ok) {
+      cachedChangelog = await res.json();
+      document.getElementById("version-tag").innerText = cachedChangelog.version || "vA1.0.1";
+    }
+  } catch (err) {
+    console.log("Could not load changelog.json", err);
+  }
+}
+
+function openChangelog() {
+  if (!cachedChangelog) {
+    checkChangelog().then(() => renderChangelogUI());
+  } else {
+    renderChangelogUI();
+  }
+}
+
+function renderChangelogUI() {
+  if (!cachedChangelog) return;
+  document.getElementById("changelog-title").innerText = cachedChangelog.title || "Patch Notes";
+  document.getElementById("changelog-badge").innerText = cachedChangelog.version || "vA1.0.1";
+  document.getElementById("changelog-date").innerText = cachedChangelog.date || "";
+
+  const listEl = document.getElementById("changelog-list");
+  listEl.innerHTML = "";
+  (cachedChangelog.notes || []).forEach(note => {
+    const li = document.createElement("li");
+    li.innerText = note;
+    listEl.appendChild(li);
+  });
+
+  document.getElementById("changelog-modal").style.display = "flex";
+}
+
+function closeChangelog() {
+  document.getElementById("changelog-modal").style.display = "none";
+}
+
+// ==========================================
+// 3. CORE GAME ENGINE & MULTIPLAYER LOBBY
 // ==========================================
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
@@ -89,8 +137,6 @@ let coins = 0;
 let level = 1;
 
 let camera = { x: 0, y: 0 };
-
-// GHOST-DOT PREVENTION: Tracks consumed coordinates so server sync cannot resurrect them
 let consumedDots = new Set();
 
 // UPGRADES
@@ -207,7 +253,6 @@ function startMultiplayer() {
       updateUI();
     }
 
-    // MULTIPLAYER SYNC: Filter out any dots we already ate so they CANNOT respawn as ghosts
     if (data.type === "TICK") {
       serverPlayers = data.players;
       if (data.normalDots) {
@@ -648,7 +693,6 @@ function stopBridging() {
   }
 }
 
-// MAIN TICK LOOP
 function tick() {
   if (phase === "GAMEOVER" || phase === "INTERMISSION" || phase === "MENU" || phase === "LOBBY") return;
 
@@ -719,16 +763,12 @@ function tick() {
   let tail = snake[snake.length - 1];
   bridgePlanks.delete(`${tail.x},${tail.y}`);
 
-  // ==========================================
-  // GHOST-DOT SOLVER: Real-time pickup synchronization
-  // ==========================================
   let eatenNormal = normalDots.findIndex(d => d.x === head.x && d.y === head.y);
   if (eatenNormal !== -1) {
     let dot = normalDots[eatenNormal];
-    consumedDots.add(`${dot.x},${dot.y}`); // Blacklist dot from respawning
+    consumedDots.add(`${dot.x},${dot.y}`);
     normalDots.splice(eatenNormal, 1);
 
-    // Tell Render server we ate it right now!
     if (isMultiplayer && socket && socket.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify({ type: "EAT_DOT", x: dot.x, y: dot.y }));
     }
