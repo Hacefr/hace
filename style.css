@@ -6,7 +6,7 @@
 }
 
 body {
-  background: #09090d;
+  background: #2b2b2b;
   color: #fff;
   font-family: 'Segoe UI', system-ui, sans-serif;
   display: flex;
@@ -17,6 +17,48 @@ body {
   overflow: hidden;
 }
 
+/* MINIMALIST MAIN MENU */
+#main-menu {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: #2b2b2b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.menu-options {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+
+.menu-btn {
+  background: transparent;
+  border: none;
+  color: #e0e0e0;
+  font-size: 28px;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+  transition: color 0.15s, transform 0.15s;
+}
+
+.menu-btn:hover:not(.disabled) {
+  color: #ffffff;
+  transform: scale(1.05);
+}
+
+.menu-btn.disabled {
+  color: #555555;
+  cursor: not-allowed;
+}
+
+/* GAME LAYOUT */
 #main-layout {
   display: flex;
   align-items: center;
@@ -25,11 +67,12 @@ body {
   width: 100vw;
   height: 100vh;
   padding: 10px;
+  background: #09090d;
 }
 
 /* SIDE PANELS */
 .side-panel {
-  width: 240px;
+  width: 250px;
   height: min(92vw, 92vh);
   background: #12121c;
   border: 2px solid #232332;
@@ -43,9 +86,9 @@ body {
 }
 
 .panel-title {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 800;
-  letter-spacing: 1px;
+  letter-spacing: 1.5px;
   text-transform: uppercase;
   padding-bottom: 8px;
   border-bottom: 1px solid #232332;
@@ -66,25 +109,26 @@ body {
   padding: 8px 10px;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 
-/* PIXEL ART ICON STYLING (WITH AUTOMATIC FALLBACK SCALING) */
+/* BIGGER ICON SIZE SO PISKEL ART IS CLEARER */
 .item-icon-img {
-  width: 38px;
-  height: 38px;
-  image-rendering: pixelated; /* Keeps your Piskel art crisp */
+  width: 46px;
+  height: 46px;
+  image-rendering: pixelated;
   object-fit: contain;
-  border-radius: 4px;
-  background: rgba(0,0,0,0.3);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  flex-shrink: 0;
 }
 
 .item-info { flex: 1; }
-.item-info h5 { font-size: 12px; margin-bottom: 2px; }
+.item-info h5 { font-size: 13px; margin-bottom: 2px; }
 .item-info p { font-size: 10px; color: #888; line-height: 1.2; }
 .item-badge { font-size: 10px; font-weight: bold; padding: 2px 6px; border-radius: 4px; }
 
-/* HIDE SIDE PANELS ON TINY COMPANION SCREENS */
 @media (max-width: 950px) {
   .side-panel { display: none !important; }
 }
@@ -232,7 +276,6 @@ canvas {
 }
 .shop-card button:disabled { background: #444; color: #777; cursor: not-allowed; }
 
-/* READY VOTING */
 #vote-section {
   margin-top: 15px;
   display: flex;
