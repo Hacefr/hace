@@ -2,9 +2,8 @@
 // 1. ACCOUNT & AUTHENTICATION SYSTEM
 // ==========================================
 let currentUser = localStorage.getItem("saved_username") || null;
-let currentAuthMode = "login"; // "login" or "signup"
+let currentAuthMode = "login";
 
-// Check if player was already logged in previously
 window.addEventListener("DOMContentLoaded", () => {
   if (currentUser) {
     proceedToMainMenu(currentUser);
@@ -42,7 +41,6 @@ function handleAuthSubmit(e) {
     return;
   }
 
-  // Save login state locally
   localStorage.setItem("saved_username", user);
   proceedToMainMenu(user);
 }
@@ -106,11 +104,17 @@ let heat = 0;
 let decayTimer = null;
 let lastTick = 0;
 
+// DRAFT & REROLL STATE
+let draftPhase = "NONE"; // "CURSE", "UPGRADE", "READY"
+let currentDraftChoices = [];
+let upgradeRerolls = 3;
+let curseRerolls = 2;
+
 // PURPLE KING ACHIEVEMENT TRACKER
 let purpleDotsEatenThisRun = 0;
 let isPurpleKingUnlocked = localStorage.getItem("skin_purple_king") === "true";
 
-// SAFE ICON LOADER (Never throws a 404)
+// SAFE ICON LOADER
 function getIconHtml(name, alt) {
   const fallbackSvg = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='44' height='44' viewBox='0 0 44 44'><rect width='44' height='44' fill='%2322222e'/><text x='22' y='28' font-size='18' text-anchor='middle' fill='%23666'>?</text></svg>";
   return `<img src="Icons/${name}.png" class="item-icon-img" alt="${alt}" onerror="this.onerror=null; this.src='Icons/Placeholder.png'; this.onerror=function(){this.src='${fallbackSvg}';};">`;
@@ -135,7 +139,7 @@ function startSingleplayer() {
   requestAnimationFrame(render);
 }
 
-// MULTIPLAYER LAUNCH (Connects to your Render server)
+// MULTIPLAYER LAUNCH
 function startMultiplayer() {
   isMultiplayer = true;
   document.getElementById("main-menu").style.display = "none";
@@ -235,13 +239,13 @@ function initLevel() {
   isBridging = false;
   heat = 0;
 
-  rollCurses();
   setBanner(`Level ${level}: Clear red dots to unlock exit!`, "#ff5555");
 
   normalDots = [];
   let dotCount = 6 + (level * 3);
   for (let i = 0; i < dotCount; i++) spawnDot(normalDots);
 
+  // Nullscape
   if (activeCurses.has("nullscape")) {
     let purpleCount = Math.floor(normalDots.length * 0.35);
     for (let i = 0; i < purpleCount; i++) {
@@ -250,6 +254,7 @@ function initLevel() {
     }
   }
 
+  // Temperature
   if (activeCurses.has("temperature")) {
     spawnDot(coolButtons);
     spawnDot(coolButtons);
@@ -264,12 +269,6 @@ function initLevel() {
 
   updatePanels();
   updateUI();
-}
-
-function rollCurses() {
-  if (level >= 3 && !activeCurses.has("temperature")) activeCurses.add("temperature");
-  if (level >= 5 && !activeCurses.has("nullscape")) activeCurses.add("nullscape");
-  if (level >= 7 && !activeCurses.has("nothing")) activeCurses.add("nothing");
 }
 
 function setBanner(text, color) {
@@ -349,32 +348,185 @@ function tryShieldAbsorb(x, y) {
   return false;
 }
 
+// ==========================================
+// 3. 3-CARD DRAFT & INTERMISSION SYSTEM
+// ==========================================
+const ALL_CURSES_POOL = [
+  { id: "temperature", name: "Temperature", icon: "temperature", desc: "Hit coolant buttons or burn alive!" },
+  { id: "nullscape", name: "Nullscape", icon: "nullscape", desc: "Purple rotten dots are fatal poison!" },
+  { id: "nothing", name: "Theory of Nothing", icon: "nothing", desc: "Dash & Void Bridge are heavily nerfed." }
+];
+
+const ALL_UPGRADES_POOL = [
+  { id: "shoes", name: "Shoes", icon: "shoes", desc: "Increases snake speed.", cost: 30, max: 3 },
+  { id: "dash", name: "Dash!", icon: "dash", desc: "Blink forward 3 tiles.", cost: 40, max: 2 },
+  { id: "bridge", name: "Bridge", icon: "bridge", desc: "Glide across white void.", cost: 60, max: 1 },
+  { id: "poison", name: "Poison Ctr", icon: "poison", desc: "+20% Purple dot resist.", cost: 35, max: 3 },
+  { id: "eyes", name: "Eagle Eyes", icon: "eyes", desc: "Radar arrows for coolant.", cost: 45, max: 1 },
+  { id: "shield", name: "Shield", icon: "shield", desc: "Blocks 1 fatal void hit.", cost: 50, max: 2 },
+  { id: "thermo", name: "Thermometer", icon: "thermo", desc: "Reveals the Heat gauge.", cost: 25, max: 1 }
+];
+
 function triggerIntermission() {
   phase = "INTERMISSION";
   clearInterval(decayTimer);
 
-  const overlay = document.getElementById("overlay-screen");
-  const shop = document.getElementById("shop-container");
-  overlay.style.display = "flex";
+  document.getElementById("overlay-screen").style.display = "flex";
+  document.getElementById("vote-section").style.display = "none";
+  document.getElementById("draft-cards-container").style.display = "flex";
+  document.getElementById("draft-bottom-bar").style.display = "flex";
 
-  let isShopLevel = (level % 4 === 0);
-  let allMaxed = (
-    upgrades.shoes >= 3 && upgrades.dash >= 2 && upgrades.bridge >= 1 &&
-    upgrades.poison >= 3 && upgrades.eyes >= 1 && upgrades.shield >= 2 && upgrades.thermo >= 1
-  );
+  upgradeRerolls = 3;
+  curseRerolls = 2;
 
-  if (isShopLevel && !allMaxed) {
-    document.getElementById("overlay-title").innerText = "THE SHOP IS OPEN";
-    document.getElementById("overlay-title").style.color = "#ffd700";
-    document.getElementById("overlay-subtitle").innerText = "Spend your gold on upgrades!";
-    shop.style.display = "flex";
-    renderShopCards();
+  // Determine if this round gives a Curse Draft first (e.g. Levels 3, 5, 7)
+  let unacquiredCurses = ALL_CURSES_POOL.filter(c => !activeCurses.has(c.id));
+  let isCurseRound = (level >= 3 && unacquiredCurses.length > 0 && Math.random() < 0.85);
+
+  if (isCurseRound) {
+    startCurseDraft();
   } else {
-    document.getElementById("overlay-title").innerText = `LEVEL ${level} COMPLETE`;
-    document.getElementById("overlay-title").style.color = "#4CAF50";
-    document.getElementById("overlay-subtitle").innerText = "Catch your breath before the next round...";
-    shop.style.display = "none";
+    startUpgradeDraft();
   }
+}
+
+function startCurseDraft() {
+  draftPhase = "CURSE";
+  const logo = document.getElementById("draft-logo");
+  logo.src = "Icons/curses.png";
+  logo.onerror = () => { logo.src = "Icons/Placeholder.png"; };
+
+  document.getElementById("overlay-subtitle").innerText = "THE VOID DEMANDS A SACRIFICE: Pick 1 Curse";
+  updateRerollButtonUI("curse");
+  generateCardChoices();
+}
+
+function startUpgradeDraft() {
+  draftPhase = "UPGRADE";
+  const logo = document.getElementById("draft-logo");
+  logo.src = "Icons/upgrades.png";
+  logo.onerror = () => { logo.src = "Icons/Placeholder.png"; };
+
+  document.getElementById("overlay-subtitle").innerText = "REWARD TIME: Pick 1 Upgrade for your gold";
+  updateRerollButtonUI("upgrade");
+  generateCardChoices();
+}
+
+function updateRerollButtonUI(type) {
+  const btn = document.getElementById("reroll-btn");
+  const countSpan = document.getElementById("reroll-count");
+
+  if (type === "curse") {
+    btn.className = "curse-reroll";
+    countSpan.innerText = `${curseRerolls} Left`;
+    btn.disabled = (curseRerolls <= 0);
+  } else {
+    btn.className = "";
+    countSpan.innerText = `${upgradeRerolls} Left`;
+    btn.disabled = (upgradeRerolls <= 0);
+  }
+}
+
+function generateCardChoices() {
+  let pool = [];
+
+  if (draftPhase === "CURSE") {
+    pool = ALL_CURSES_POOL.filter(c => !activeCurses.has(c.id));
+  } else {
+    pool = ALL_UPGRADES_POOL.filter(u => upgrades[u.id] < u.max);
+  }
+
+  // Shuffle and pick up to 3
+  let shuffled = [...pool].sort(() => 0.5 - Math.random());
+  currentDraftChoices = shuffled.slice(0, 3);
+
+  renderDraftCards();
+}
+
+function renderDraftCards() {
+  for (let i = 0; i < 3; i++) {
+    const cardEl = document.getElementById(`choice-${i + 1}`);
+    const item = currentDraftChoices[i];
+
+    if (!item) {
+      cardEl.style.visibility = "hidden";
+      continue;
+    }
+
+    cardEl.style.visibility = "visible";
+    cardEl.className = draftPhase === "CURSE" ? "draft-card curse-card" : "draft-card";
+
+    let bottomDetail = "";
+    if (draftPhase === "UPGRADE") {
+      let canAfford = coins >= item.cost;
+      bottomDetail = `<div class="card-cost" style="color: ${canAfford ? '#ffd700' : '#ff4757'};">$${item.cost} (${upgrades[item.id]}/${item.max})</div>`;
+    } else {
+      bottomDetail = `<div class="card-cost" style="color: #ff4757;">CURSE</div>`;
+    }
+
+    cardEl.innerHTML = `
+      ${getIconHtml(item.icon, item.name)}
+      <h4>${item.name}</h4>
+      <p>${item.desc}</p>
+      ${bottomDetail}
+    `;
+  }
+}
+
+function selectDraftChoice(index) {
+  const item = currentDraftChoices[index];
+  if (!item) return;
+
+  if (draftPhase === "CURSE") {
+    activeCurses.add(item.id);
+    updatePanels();
+    // After picking curse, proceed to Upgrades!
+    startUpgradeDraft();
+  } else if (draftPhase === "UPGRADE") {
+    if (coins < item.cost) {
+      setBanner("Not enough gold to buy this upgrade!", "#ff4757");
+      return;
+    }
+
+    coins -= item.cost;
+    upgrades[item.id]++;
+    if (item.id === "shield") currentShields++;
+    if (item.id === "thermo" && activeCurses.has("temperature")) {
+      document.getElementById("heat-bar-wrapper").style.display = "flex";
+    }
+
+    updateUI();
+    updatePanels();
+    finishDraftToReady();
+  }
+}
+
+function rerollDraftChoices() {
+  if (draftPhase === "CURSE" && curseRerolls > 0) {
+    curseRerolls--;
+    updateRerollButtonUI("curse");
+    generateCardChoices();
+  } else if (draftPhase === "UPGRADE" && upgradeRerolls > 0) {
+    upgradeRerolls--;
+    updateRerollButtonUI("upgrade");
+    generateCardChoices();
+  }
+}
+
+function skipDraft() {
+  if (draftPhase === "CURSE") {
+    startUpgradeDraft();
+  } else {
+    finishDraftToReady();
+  }
+}
+
+function finishDraftToReady() {
+  draftPhase = "READY";
+  document.getElementById("draft-cards-container").style.display = "none";
+  document.getElementById("draft-bottom-bar").style.display = "none";
+  document.getElementById("overlay-subtitle").innerText = "All set! Ready up to launch next level";
+  document.getElementById("vote-section").style.display = "flex";
 
   const btn = document.getElementById("ready-btn");
   btn.innerText = "Ready Up";
@@ -393,115 +545,45 @@ function toggleReadyVote() {
   }
 }
 
-function renderShopCards() {
-  document.getElementById("card-shoes").innerHTML = `
-    ${getIconHtml('shoes', 'Shoes')}
-    <h4>Shoes</h4><p>Speed up.</p>
-    <div style="font-size:10px; color:#4CAF50;">${upgrades.shoes}/3</div>
-    <button onclick="buyItem('shoes')" ${upgrades.shoes >= 3 || coins < 30 ? 'disabled' : ''}>Buy $30</button>`;
-
-  document.getElementById("card-dash").innerHTML = `
-    ${getIconHtml('dash', 'Dash')}
-    <h4>Dash!</h4><p>Blink forward.</p>
-    <div style="font-size:10px; color:#4CAF50;">${upgrades.dash}/2</div>
-    <button onclick="buyItem('dash')" ${upgrades.dash >= 2 || coins < 40 ? 'disabled' : ''}>Buy $40</button>`;
-
-  document.getElementById("card-bridge").innerHTML = `
-    ${getIconHtml('bridge', 'Bridge')}
-    <h4>Bridge</h4><p>Cross Void.</p>
-    <div style="font-size:10px; color:#4CAF50;">${upgrades.bridge}/1</div>
-    <button onclick="buyItem('bridge')" ${upgrades.bridge >= 1 || coins < 60 ? 'disabled' : ''}>Buy $60</button>`;
-
-  document.getElementById("card-poison").innerHTML = `
-    ${getIconHtml('poison', 'Poison Ctr')}
-    <h4>Poison Ctr</h4><p>Resist purple.</p>
-    <div style="font-size:10px; color:#4CAF50;">${upgrades.poison}/3</div>
-    <button onclick="buyItem('poison')" ${upgrades.poison >= 3 || coins < 35 ? 'disabled' : ''}>Buy $35</button>`;
-
-  document.getElementById("card-eyes").innerHTML = `
-    ${getIconHtml('eyes', 'Eyes')}
-    <h4>Eagle Eyes</h4><p>Coolant radar.</p>
-    <div style="font-size:10px; color:#4CAF50;">${upgrades.eyes}/1</div>
-    <button onclick="buyItem('eyes')" ${upgrades.eyes >= 1 || coins < 45 ? 'disabled' : ''}>Buy $45</button>`;
-
-  document.getElementById("card-shield").innerHTML = `
-    ${getIconHtml('shield', 'Shield')}
-    <h4>Shield</h4><p>Void save.</p>
-    <div style="font-size:10px; color:#4CAF50;">${upgrades.shield}/2</div>
-    <button onclick="buyItem('shield')" ${upgrades.shield >= 2 || coins < 50 ? 'disabled' : ''}>Buy $50</button>`;
-
-  document.getElementById("card-thermo").innerHTML = `
-    ${getIconHtml('thermo', 'Thermometer')}
-    <h4>Thermo</h4><p>Heat gauge.</p>
-    <div style="font-size:10px; color:#4CAF50;">${upgrades.thermo}/1</div>
-    <button onclick="buyItem('thermo')" ${upgrades.thermo >= 1 || coins < 25 ? 'disabled' : ''}>Buy $25</button>`;
-}
-
-function buyItem(item) {
-  if (item === 'shoes' && upgrades.shoes < 3 && coins >= 30) { coins -= 30; upgrades.shoes++; }
-  else if (item === 'dash' && upgrades.dash < 2 && coins >= 40) { coins -= 40; upgrades.dash++; }
-  else if (item === 'bridge' && upgrades.bridge < 1 && coins >= 60) { coins -= 60; upgrades.bridge++; }
-  else if (item === 'poison' && upgrades.poison < 3 && coins >= 35) { coins -= 35; upgrades.poison++; }
-  else if (item === 'eyes' && upgrades.eyes < 1 && coins >= 45) { coins -= 45; upgrades.eyes++; }
-  else if (item === 'shield' && upgrades.shield < 2 && coins >= 50) { coins -= 50; upgrades.shield++; currentShields++; }
-  else if (item === 'thermo' && upgrades.thermo < 1 && coins >= 25) { 
-    coins -= 25; upgrades.thermo++; 
-    if (activeCurses.has("temperature")) document.getElementById("heat-bar-wrapper").style.display = "flex";
-  }
+// ==========================================
+// 4. CONTROLS, ABILITIES & GAME LOOP
+// ==========================================
+function useDash() {
+  if (upgrades.dash === 0 || dashCharges <= 0 || (dir.x === 0 && dir.y === 0)) return;
+  dashCharges--;
   updateUI();
-  renderShopCards();
-  updatePanels();
+
+  let dashDist = activeCurses.has("nothing") ? 1 : 3;
+  for (let step = 0; step < dashDist; step++) {
+    const head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
+    if (head.x < 0 || head.x >= worldGrid || head.y < 0 || head.y >= worldGrid) break;
+    snake.unshift(head);
+    snake.pop();
+  }
+
+  if (!dashCooldownTimer) {
+    let rechargeTime = activeCurses.has("nothing") ? 12000 : 7000;
+    dashCooldownTimer = setInterval(() => {
+      if (dashCharges < upgrades.dash) {
+        dashCharges++;
+        updateUI();
+      } else {
+        clearInterval(dashCooldownTimer);
+        dashCooldownTimer = null;
+      }
+    }, rechargeTime);
+  }
 }
 
-function updatePanels() {
-  const uList = document.getElementById("upgrades-list");
-  uList.innerHTML = "";
-  let hasAny = false;
+function startBridging() {
+  if (upgrades.bridge === 0 || bridgeStamina <= 10 || isBridging || bridgeCooldown > 0) return;
+  isBridging = true;
+}
 
-  if (upgrades.shoes > 0) {
-    hasAny = true;
-    uList.innerHTML += `<div class="item-card">${getIconHtml('shoes', 'Shoes')}<div class="item-info"><h5>Shoes</h5><p>Speed +${upgrades.shoes * 12}%</p></div><div class="item-badge" style="background:#4CAF50;">${upgrades.shoes}/3</div></div>`;
-  }
-  if (upgrades.dash > 0) {
-    hasAny = true;
-    uList.innerHTML += `<div class="item-card">${getIconHtml('dash', 'Dash')}<div class="item-info"><h5>Dash!</h5><p>${activeCurses.has("nothing") ? 'NERFED: 1 Tile' : '3-Tile Blink'}</p></div><div class="item-badge" style="background:#ffd700; color:#000;">${upgrades.dash}/2</div></div>`;
-  }
-  if (upgrades.bridge > 0) {
-    hasAny = true;
-    uList.innerHTML += `<div class="item-card">${getIconHtml('bridge', 'Bridge')}<div class="item-info"><h5>Bridge</h5><p>${activeCurses.has("nothing") ? 'NERFED: Fast drain' : 'Cross Void'}</p></div><div class="item-badge" style="background:#00cec9; color:#000;">1/1</div></div>`;
-  }
-  if (upgrades.poison > 0) {
-    hasAny = true;
-    uList.innerHTML += `<div class="item-card">${getIconHtml('poison', 'Poison Ctr')}<div class="item-info"><h5>Poison Ctr</h5><p>+${upgrades.poison * 20}% Purple dot safe</p></div><div class="item-badge" style="background:#9b59b6;">${upgrades.poison}/3</div></div>`;
-  }
-  if (upgrades.eyes > 0) {
-    hasAny = true;
-    uList.innerHTML += `<div class="item-card">${getIconHtml('eyes', 'Eyes')}<div class="item-info"><h5>Eagle Eyes</h5><p>Radar for coolant</p></div><div class="item-badge" style="background:#3498db;">1/1</div></div>`;
-  }
-  if (upgrades.shield > 0) {
-    hasAny = true;
-    uList.innerHTML += `<div class="item-card">${getIconHtml('shield', 'Shield')}<div class="item-info"><h5>Shield</h5><p>Absorb Void Hits</p></div><div class="item-badge" style="background:#e67e22;">${currentShields}/${upgrades.shield}</div></div>`;
-  }
-  if (upgrades.thermo > 0) {
-    hasAny = true;
-    uList.innerHTML += `<div class="item-card">${getIconHtml('thermo', 'Thermo')}<div class="item-info"><h5>Thermometer</h5><p>Reveals Heat Bar</p></div><div class="item-badge" style="background:#ff6b81;">1/1</div></div>`;
-  }
-  if (!hasAny) uList.innerHTML = `<div style="font-size: 11px; color: #666;">No upgrades owned. Visit shop on Level 4!</div>`;
-
-  const cList = document.getElementById("curses-list");
-  cList.innerHTML = "";
-  if (activeCurses.size === 0) {
-    cList.innerHTML = `<div style="font-size: 11px; color: #666;">No active curses. The void sleeps...</div>`;
-  } else {
-    if (activeCurses.has("temperature")) {
-      cList.innerHTML += `<div class="item-card" style="border-color: #ff4757;">${getIconHtml('temperature', 'Temp')}<div class="item-info"><h5 style="color: #ff6b81;">Temperature</h5><p>Hit coolant or burn!</p></div></div>`;
-    }
-    if (activeCurses.has("nullscape")) {
-      cList.innerHTML += `<div class="item-card" style="border-color: #9b59b6;">${getIconHtml('nullscape', 'Nullscape')}<div class="item-info"><h5 style="color: #a29bfe;">Nullscape</h5><p>Purple dots are poison!</p></div></div>`;
-    }
-    if (activeCurses.has("nothing")) {
-      cList.innerHTML += `<div class="item-card" style="border-color: #e67e22;">${getIconHtml('nothing', 'Theory')}<div class="item-info"><h5 style="color: #fdcb6e;">Theory of Nothing</h5><p>Dash & Bridge nerfed.</p></div></div>`;
-    }
+function stopBridging() {
+  if (isBridging) {
+    isBridging = false;
+    bridgeCooldown = 100;
   }
 }
 
@@ -542,6 +624,7 @@ function tick() {
     if (!tryShieldAbsorb(head.x, head.y)) return gameOver("Swallowed by the void!");
   }
 
+  // Poison Center Roll
   let purpleIdx = purpleDots.findIndex(p => p.x === head.x && p.y === head.y);
   if (purpleIdx !== -1) {
     let safeChance = upgrades.poison * 0.20;
@@ -603,6 +686,78 @@ function updateUI() {
   document.getElementById("level").innerText = level;
   document.getElementById("dots").innerText = normalDots.length;
   document.getElementById("coins").innerText = coins;
+
+  const dashSlot = document.getElementById("dash-hud");
+  if (upgrades.dash > 0) {
+    dashSlot.classList.add("active");
+    document.getElementById("dash-val").innerText = `${dashCharges} / ${upgrades.dash}`;
+  }
+
+  const bridgeSlot = document.getElementById("bridge-hud");
+  if (upgrades.bridge > 0) {
+    bridgeSlot.classList.add("active");
+    let txt = bridgeCooldown > 0 ? `COOLING (${Math.ceil(bridgeCooldown)}%)` : `${Math.ceil(bridgeStamina)}%`;
+    document.getElementById("bridge-val").innerText = txt;
+  }
+
+  const shieldSlot = document.getElementById("shield-hud");
+  if (upgrades.shield > 0) {
+    shieldSlot.style.display = "block";
+    shieldSlot.classList.add("active");
+    document.getElementById("shield-val").innerText = `${currentShields} / ${upgrades.shield}`;
+  }
+}
+
+function updatePanels() {
+  const uList = document.getElementById("upgrades-list");
+  uList.innerHTML = "";
+  let hasAny = false;
+
+  if (upgrades.shoes > 0) {
+    hasAny = true;
+    uList.innerHTML += `<div class="item-card">${getIconHtml('shoes', 'Shoes')}<div class="item-info"><h5>Shoes</h5><p>Speed +${upgrades.shoes * 12}%</p></div><div class="item-badge" style="background:#4CAF50;">${upgrades.shoes}/3</div></div>`;
+  }
+  if (upgrades.dash > 0) {
+    hasAny = true;
+    uList.innerHTML += `<div class="item-card">${getIconHtml('dash', 'Dash')}<div class="item-info"><h5>Dash!</h5><p>${activeCurses.has("nothing") ? 'NERFED: 1 Tile' : '3-Tile Blink'}</p></div><div class="item-badge" style="background:#ffd700; color:#000;">${upgrades.dash}/2</div></div>`;
+  }
+  if (upgrades.bridge > 0) {
+    hasAny = true;
+    uList.innerHTML += `<div class="item-card">${getIconHtml('bridge', 'Bridge')}<div class="item-info"><h5>Bridge</h5><p>${activeCurses.has("nothing") ? 'NERFED: Fast drain' : 'Cross Void'}</p></div><div class="item-badge" style="background:#00cec9; color:#000;">1/1</div></div>`;
+  }
+  if (upgrades.poison > 0) {
+    hasAny = true;
+    uList.innerHTML += `<div class="item-card">${getIconHtml('poison', 'Poison Ctr')}<div class="item-info"><h5>Poison Ctr</h5><p>+${upgrades.poison * 20}% Purple dot safe</p></div><div class="item-badge" style="background:#9b59b6;">${upgrades.poison}/3</div></div>`;
+  }
+  if (upgrades.eyes > 0) {
+    hasAny = true;
+    uList.innerHTML += `<div class="item-card">${getIconHtml('eyes', 'Eyes')}<div class="item-info"><h5>Eagle Eyes</h5><p>Radar for coolant</p></div><div class="item-badge" style="background:#3498db;">1/1</div></div>`;
+  }
+  if (upgrades.shield > 0) {
+    hasAny = true;
+    uList.innerHTML += `<div class="item-card">${getIconHtml('shield', 'Shield')}<div class="item-info"><h5>Shield</h5><p>Absorb Void Hits</p></div><div class="item-badge" style="background:#e67e22;">${currentShields}/${upgrades.shield}</div></div>`;
+  }
+  if (upgrades.thermo > 0) {
+    hasAny = true;
+    uList.innerHTML += `<div class="item-card">${getIconHtml('thermo', 'Thermo')}<div class="item-info"><h5>Thermometer</h5><p>Reveals Heat Bar</p></div><div class="item-badge" style="background:#ff6b81;">1/1</div></div>`;
+  }
+  if (!hasAny) uList.innerHTML = `<div style="font-size: 11px; color: #666;">No upgrades owned. Visit shop on Level 4!</div>`;
+
+  const cList = document.getElementById("curses-list");
+  cList.innerHTML = "";
+  if (activeCurses.size === 0) {
+    cList.innerHTML = `<div style="font-size: 11px; color: #666;">No active curses. The void sleeps...</div>`;
+  } else {
+    if (activeCurses.has("temperature")) {
+      cList.innerHTML += `<div class="item-card" style="border-color: #ff4757;">${getIconHtml('temperature', 'Temp')}<div class="item-info"><h5 style="color: #ff6b81;">Temperature</h5><p>Hit coolant or burn!</p></div></div>`;
+    }
+    if (activeCurses.has("nullscape")) {
+      cList.innerHTML += `<div class="item-card" style="border-color: #9b59b6;">${getIconHtml('nullscape', 'Nullscape')}<div class="item-info"><h5 style="color: #a29bfe;">Nullscape</h5><p>Purple dots are poison!</p></div></div>`;
+    }
+    if (activeCurses.has("nothing")) {
+      cList.innerHTML += `<div class="item-card" style="border-color: #e67e22;">${getIconHtml('nothing', 'Theory')}<div class="item-info"><h5 style="color: #fdcb6e;">Theory of Nothing</h5><p>Dash & Bridge nerfed.</p></div></div>`;
+    }
+  }
 }
 
 function render(timestamp) {
@@ -685,7 +840,7 @@ function render(timestamp) {
     ctx.beginPath(); ctx.arc(d.x * TILE_SIZE + TILE_SIZE / 2, d.y * TILE_SIZE + TILE_SIZE / 2, TILE_SIZE / 2.8, 0, Math.PI * 2); ctx.fill();
   });
 
-  // DRAW LOCAL PLAYER (Or Purple King if equipped!)
+  // Player Snake
   snake.forEach((part, i) => {
     if (isPurpleKingUnlocked) {
       ctx.fillStyle = i === 0 ? "#8e44ad" : "#a29bfe";
@@ -695,7 +850,7 @@ function render(timestamp) {
     ctx.fillRect(part.x * TILE_SIZE + 1, part.y * TILE_SIZE + 1, TILE_SIZE - 2, TILE_SIZE - 2);
   });
 
-  // DRAW OTHER PLAYERS IN MULTIPLAYER
+  // Multiplayer peers
   if (isMultiplayer) {
     Object.values(serverPlayers).forEach(p => {
       if (p.id !== myPlayerId && p.alive && p.snake.length > 0) {
@@ -753,10 +908,17 @@ window.addEventListener("keydown", (e) => {
       initLevel();
       return;
     }
+    if (phase !== "INTERMISSION") startBridging();
   }
+
+  if (e.key === "Shift" && phase !== "INTERMISSION") useDash();
 
   if (["ArrowUp", "KeyW"].includes(e.code) && dir.y === 0) nextDir = { x: 0, y: -1 };
   if (["ArrowDown", "KeyS"].includes(e.code) && dir.y === 0) nextDir = { x: 0, y: 1 };
   if (["ArrowLeft", "KeyA"].includes(e.code) && dir.x === 0) nextDir = { x: -1, y: 0 };
   if (["ArrowRight", "KeyD"].includes(e.code) && dir.x === 0) nextDir = { x: 1, y: 0 };
+});
+
+window.addEventListener("keyup", (e) => {
+  if (e.code === "Space") stopBridging();
 });
