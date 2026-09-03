@@ -61,7 +61,7 @@ function logout() {
 }
 
 // ==========================================
-// 2. CORE GAME ENGINE & STATE
+// 2. CORE GAME ENGINE & MULTIPLAYER LOBBY
 // ==========================================
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
@@ -73,6 +73,7 @@ let isMultiplayer = false;
 let socket = null;
 let myPlayerId = null;
 let serverPlayers = {};
+let isLobbyReady = false;
 
 let snake = [];
 let dir = { x: 0, y: 0 };
@@ -83,13 +84,13 @@ let yellowDots = [];
 let coolButtons = []; 
 let exit = null;
 let decayingTiles = new Map();
-let phase = "MENU";
+let phase = "MENU"; // "MENU", "LOBBY", "COLLECT", "GREED", "INTERMISSION", "GAMEOVER"
 let coins = 0;
 let level = 1;
 
 let camera = { x: 0, y: 0 };
 
-// UPGRADES INVENTORY
+// UPGRADES
 let upgrades = { shoes: 0, dash: 0, bridge: 0, poison: 0, eyes: 0, shield: 0, thermo: 0 };
 let currentShields = 0;
 let dashCharges = 0;
@@ -104,8 +105,8 @@ let heat = 0;
 let decayTimer = null;
 let lastTick = 0;
 
-// DRAFT & REROLL STATE
-let draftPhase = "NONE"; // "CURSE", "UPGRADE", "READY"
+// DRAFT
+let draftPhase = "NONE";
 let currentDraftChoices = [];
 let upgradeRerolls = 3;
 let curseRerolls = 2;
@@ -114,7 +115,6 @@ let curseRerolls = 2;
 let purpleDotsEatenThisRun = 0;
 let isPurpleKingUnlocked = localStorage.getItem("skin_purple_king") === "true";
 
-// SAFE ICON LOADER
 function getIconHtml(name, alt) {
   const fallbackSvg = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='44' height='44' viewBox='0 0 44 44'><rect width='44' height='44' fill='%2322222e'/><text x='22' y='28' font-size='18' text-anchor='middle' fill='%23666'>?</text></svg>";
   return `<img src="Icons/${name}.png" class="item-icon-img" alt="${alt}" onerror="this.onerror=null; this.src='Icons/Placeholder.png'; this.onerror=function(){this.src='${fallbackSvg}';};">`;
@@ -133,26 +133,36 @@ function startSingleplayer() {
   document.getElementById("main-menu").style.display = "none";
   document.getElementById("main-layout").style.display = "flex";
   document.getElementById("chat-container").style.display = "none";
+  document.getElementById("lobby-screen").style.display = "none";
   phase = "COLLECT";
   resizeCanvas();
   initLevel();
   requestAnimationFrame(render);
 }
 
-// MULTIPLAYER LAUNCH
+// MULTIPLAYER LAUNCH (Opens Waiting Lobby First!)
 function startMultiplayer() {
   isMultiplayer = true;
+  isLobbyReady = false;
   document.getElementById("main-menu").style.display = "none";
   document.getElementById("main-layout").style.display = "flex";
   document.getElementById("chat-container").style.display = "flex";
-  setBanner("Connecting to live server...", "#ffd700");
+  
+  // Show Waiting Lobby
+  phase = "LOBBY";
+  const lobby = document.getElementById("lobby-screen");
+  lobby.style.display = "flex";
+  document.getElementById("lobby-status").innerText = "Connecting to universal server...";
+  document.getElementById("lobby-ready-btn").innerText = "Ready Up";
+  document.getElementById("lobby-ready-btn").className = "";
+
+  resizeCanvas();
+  requestAnimationFrame(render);
 
   socket = new WebSocket("wss://hace-hsrp.onrender.com");
 
   socket.onopen = () => {
-    setBanner("Connected to Universal Server!", "#4CAF50");
-    resizeCanvas();
-    requestAnimationFrame(render);
+    document.getElementById("lobby-status").innerText = "Connected! Click Ready to launch.";
   };
 
   socket.onmessage = (event) => {
@@ -160,31 +170,44 @@ function startMultiplayer() {
 
     if (data.type === "INIT") {
       myPlayerId = data.yourId;
-      serverPlayers = data.players;
-      worldGrid = data.worldGrid;
-      level = data.level;
-      phase = data.phase;
-      normalDots = data.normalDots;
-      purpleDots = data.purpleDots;
-      if (data.isSpectator) {
-        setBanner("Run in progress! Spectating until Intermission...", "#ffd700");
-      }
+      serverPlayers = data.players || {};
+      worldGrid = data.worldGrid || 24;
+      level = data.level || 1;
+      updateLobbyPlayerList();
+    }
+
+    if (data.type === "PLAYER_UPDATE" || data.type === "VOTE_UPDATE") {
+      updateLobbyPlayerList();
     }
 
     if (data.type === "LEVEL_START") {
+      // GAME BEGINS: Close lobby & spawn snakes!
+      phase = "COLLECT";
+      document.getElementById("lobby-screen").style.display = "none";
+      document.getElementById("overlay-screen").style.display = "none";
+
       level = data.level;
       worldGrid = data.worldGrid;
       serverPlayers = data.players;
       normalDots = data.normalDots;
-      purpleDots = data.purpleDots;
-      phase = "COLLECT";
-      document.getElementById("overlay-screen").style.display = "none";
+      purpleDots = data.purpleDots || [];
+
+      // Local player spawn position from server
+      let me = serverPlayers[myPlayerId];
+      if (me && me.snake && me.snake.length > 0) {
+        snake = [...me.snake];
+        camera.x = snake[0].x * TILE_SIZE;
+        camera.y = snake[0].y * TILE_SIZE;
+      }
+
       setBanner(`Level ${level}: Clear red dots!`, "#ff5555");
+      updateUI();
     }
 
     if (data.type === "TICK") {
       serverPlayers = data.players;
       normalDots = data.normalDots;
+      updateUI();
     }
 
     if (data.type === "GREED_START") {
@@ -197,24 +220,53 @@ function startMultiplayer() {
       triggerIntermission();
     }
 
-    if (data.type === "VOTE_UPDATE") {
-      document.getElementById("vote-count").innerText = data.readyCount;
-      document.getElementById("vote-total").innerText = data.total;
-    }
-
     if (data.type === "CHAT") {
       addChatMessage(data.sender, data.text);
     }
   };
 
   socket.onclose = () => {
-    setBanner("Disconnected from server.", "#ff3333");
+    document.getElementById("lobby-status").innerText = "Disconnected from server.";
+    setBanner("Server disconnected.", "#ff3333");
   };
+}
+
+function updateLobbyPlayerList() {
+  const container = document.getElementById("lobby-player-list");
+  container.innerHTML = "";
+
+  const playersList = Object.values(serverPlayers);
+  playersList.forEach(p => {
+    const isMe = p.id === myPlayerId;
+    const displayName = isMe ? `${currentUser || p.name} (You)` : p.name;
+    const readyState = p.ready ? 
+      `<span class="lobby-ready-tag" style="background:#2ecc71; color:#000;">READY</span>` : 
+      `<span class="lobby-ready-tag" style="background:#e74c3c;">WAITING</span>`;
+
+    container.innerHTML += `
+      <div class="lobby-player-row">
+        <span>${displayName}</span>
+        ${readyState}
+      </div>
+    `;
+  });
+}
+
+function sendLobbyReady() {
+  if (isMultiplayer && socket && socket.readyState === WebSocket.OPEN) {
+    isLobbyReady = !isLobbyReady;
+    const btn = document.getElementById("lobby-ready-btn");
+    btn.innerText = isLobbyReady ? "Ready! (Waiting...)" : "Ready Up";
+    btn.className = isLobbyReady ? "ready" : "";
+
+    socket.send(JSON.stringify({ type: "VOTE_READY" }));
+  }
 }
 
 function initLevel() {
   clearInterval(decayTimer);
   document.getElementById("overlay-screen").style.display = "none";
+  document.getElementById("lobby-screen").style.display = "none";
 
   worldGrid = 24 + (level - 1) * 6;
   let mid = Math.floor(worldGrid / 2);
@@ -239,13 +291,13 @@ function initLevel() {
   isBridging = false;
   heat = 0;
 
+  rollCurses();
   setBanner(`Level ${level}: Clear red dots to unlock exit!`, "#ff5555");
 
   normalDots = [];
   let dotCount = 6 + (level * 3);
   for (let i = 0; i < dotCount; i++) spawnDot(normalDots);
 
-  // Nullscape
   if (activeCurses.has("nullscape")) {
     let purpleCount = Math.floor(normalDots.length * 0.35);
     for (let i = 0; i < purpleCount; i++) {
@@ -254,7 +306,6 @@ function initLevel() {
     }
   }
 
-  // Temperature
   if (activeCurses.has("temperature")) {
     spawnDot(coolButtons);
     spawnDot(coolButtons);
@@ -269,6 +320,12 @@ function initLevel() {
 
   updatePanels();
   updateUI();
+}
+
+function rollCurses() {
+  if (level >= 3 && !activeCurses.has("temperature")) activeCurses.add("temperature");
+  if (level >= 5 && !activeCurses.has("nullscape")) activeCurses.add("nullscape");
+  if (level >= 7 && !activeCurses.has("nothing")) activeCurses.add("nothing");
 }
 
 function setBanner(text, color) {
@@ -379,7 +436,6 @@ function triggerIntermission() {
   upgradeRerolls = 3;
   curseRerolls = 2;
 
-  // Determine if this round gives a Curse Draft first (e.g. Levels 3, 5, 7)
   let unacquiredCurses = ALL_CURSES_POOL.filter(c => !activeCurses.has(c.id));
   let isCurseRound = (level >= 3 && unacquiredCurses.length > 0 && Math.random() < 0.85);
 
@@ -436,7 +492,6 @@ function generateCardChoices() {
     pool = ALL_UPGRADES_POOL.filter(u => upgrades[u.id] < u.max);
   }
 
-  // Shuffle and pick up to 3
   let shuffled = [...pool].sort(() => 0.5 - Math.random());
   currentDraftChoices = shuffled.slice(0, 3);
 
@@ -480,7 +535,6 @@ function selectDraftChoice(index) {
   if (draftPhase === "CURSE") {
     activeCurses.add(item.id);
     updatePanels();
-    // After picking curse, proceed to Upgrades!
     startUpgradeDraft();
   } else if (draftPhase === "UPGRADE") {
     if (coins < item.cost) {
@@ -588,7 +642,7 @@ function stopBridging() {
 }
 
 function tick() {
-  if (phase === "GAMEOVER" || phase === "INTERMISSION" || phase === "MENU") return;
+  if (phase === "GAMEOVER" || phase === "INTERMISSION" || phase === "MENU" || phase === "LOBBY") return;
 
   if (activeCurses.has("temperature")) {
     heat += 0.35;
@@ -614,6 +668,8 @@ function tick() {
     socket.send(JSON.stringify({ type: "MOVE", dir }));
   }
 
+  if (!snake || snake.length === 0) return;
+
   const head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
 
   if (head.x < 0 || head.x >= worldGrid || head.y < 0 || head.y >= worldGrid) return gameOver("Crashed into world border!");
@@ -624,7 +680,6 @@ function tick() {
     if (!tryShieldAbsorb(head.x, head.y)) return gameOver("Swallowed by the void!");
   }
 
-  // Poison Center Roll
   let purpleIdx = purpleDots.findIndex(p => p.x === head.x && p.y === head.y);
   if (purpleIdx !== -1) {
     let safeChance = upgrades.poison * 0.20;
@@ -760,6 +815,7 @@ function updatePanels() {
   }
 }
 
+// 60FPS CAMERA & DRAWING
 function render(timestamp) {
   if (phase === "MENU") return;
 
@@ -771,8 +827,15 @@ function render(timestamp) {
     lastTick = timestamp;
   }
 
-  let targetCamX = snake[0] ? snake[0].x * TILE_SIZE + TILE_SIZE / 2 : 0;
-  let targetCamY = snake[0] ? snake[0].y * TILE_SIZE + TILE_SIZE / 2 : 0;
+  // Camera Target Math: Defaults to map center if player hasn't spawned yet
+  let targetCamX = (worldGrid * TILE_SIZE) / 2;
+  let targetCamY = (worldGrid * TILE_SIZE) / 2;
+
+  if (snake && snake.length > 0) {
+    targetCamX = snake[0].x * TILE_SIZE + TILE_SIZE / 2;
+    targetCamY = snake[0].y * TILE_SIZE + TILE_SIZE / 2;
+  }
+
   camera.x += (targetCamX - camera.x) * 0.15;
   camera.y += (targetCamY - camera.y) * 0.15;
 
@@ -840,7 +903,7 @@ function render(timestamp) {
     ctx.beginPath(); ctx.arc(d.x * TILE_SIZE + TILE_SIZE / 2, d.y * TILE_SIZE + TILE_SIZE / 2, TILE_SIZE / 2.8, 0, Math.PI * 2); ctx.fill();
   });
 
-  // Player Snake
+  // Local Snake
   snake.forEach((part, i) => {
     if (isPurpleKingUnlocked) {
       ctx.fillStyle = i === 0 ? "#8e44ad" : "#a29bfe";
@@ -850,10 +913,10 @@ function render(timestamp) {
     ctx.fillRect(part.x * TILE_SIZE + 1, part.y * TILE_SIZE + 1, TILE_SIZE - 2, TILE_SIZE - 2);
   });
 
-  // Multiplayer peers
+  // Other Multiplayer Peers
   if (isMultiplayer) {
     Object.values(serverPlayers).forEach(p => {
-      if (p.id !== myPlayerId && p.alive && p.snake.length > 0) {
+      if (p.id !== myPlayerId && p.alive && p.snake && p.snake.length > 0) {
         p.snake.forEach((part, i) => {
           ctx.fillStyle = i === 0 ? "#e74c3c" : "#ff7675";
           ctx.fillRect(part.x * TILE_SIZE + 1, part.y * TILE_SIZE + 1, TILE_SIZE - 2, TILE_SIZE - 2);
@@ -898,7 +961,7 @@ window.addEventListener("keydown", (e) => {
     return;
   }
 
-  if (phase === "MENU") return;
+  if (phase === "MENU" || phase === "LOBBY") return;
 
   if (e.code === "Space") {
     if (phase === "GAMEOVER") {
