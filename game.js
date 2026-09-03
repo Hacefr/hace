@@ -15,21 +15,14 @@ let yellowDots = [];
 let coolButtons = []; 
 let exit = null;
 let decayingTiles = new Map();
-let phase = "MENU"; // "MENU", "COLLECT", "GREED", "INTERMISSION", "GAMEOVER"
+let phase = "MENU";
 let coins = 0;
 let level = 1;
 
 let camera = { x: 0, y: 0 };
 
-// UPGRADES INVENTORY
 let upgrades = { 
-  shoes: 0,
-  dash: 0,
-  bridge: 0,
-  poison: 0,
-  eyes: 0,
-  shield: 0,
-  thermo: 0
+  shoes: 0, dash: 0, bridge: 0, poison: 0, eyes: 0, shield: 0, thermo: 0
 };
 
 let currentShields = 0;
@@ -46,14 +39,17 @@ let heat = 0;
 let decayTimer = null;
 let lastTick = 0;
 
-// MULTIPLAYER VOTES
 let totalPlayers = 3;
 let votesReady = 0;
 let isLocalPlayerReady = false;
 
-// ICON LOADER WITH PLACEHOLDER FALLBACK
+// SAFE ICON LOADER: If file is missing, it will NEVER 404
 function getIconHtml(name, alt) {
-  return `<img src="Icons/${name}.png" class="item-icon-img" alt="${alt}" onerror="this.onerror=null; this.src='Icons/Placeholder.png';">`;
+  // Built-in SVG placeholder data URI
+  const fallbackSvg = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='44' height='44' viewBox='0 0 44 44'><rect width='44' height='44' fill='%2322222e'/><text x='22' y='28' font-size='18' text-anchor='middle' fill='%23666'>?</text></svg>";
+
+  return `<img src="Icons/${name}.png" class="item-icon-img" alt="${alt}" 
+    onerror="this.onerror=null; this.src='Icons/Placeholder.png'; this.onerror=function(){this.src='${fallbackSvg}';};">`;
 }
 
 function resizeCanvas() {
@@ -62,12 +58,11 @@ function resizeCanvas() {
   canvas.height = rect.height;
 }
 window.addEventListener("resize", resizeCanvas);
-resizeCanvas();
 
-// START GAME FROM MAIN MENU
+// CALLED WHEN CLICKING 'SINGLEPLAYER'
 function startSingleplayer() {
   document.getElementById("main-menu").style.display = "none";
-  document.getElementById("main-layout").style.display = "flex";
+  phase = "COLLECT";
   resizeCanvas();
   initLevel();
   requestAnimationFrame(render);
@@ -109,7 +104,6 @@ function initLevel() {
   let dotCount = 6 + (level * 3);
   for (let i = 0; i < dotCount; i++) spawnDot(normalDots);
 
-  // Nullscape
   if (activeCurses.has("nullscape")) {
     let purpleCount = Math.floor(normalDots.length * 0.35);
     for (let i = 0; i < purpleCount; i++) {
@@ -118,13 +112,11 @@ function initLevel() {
     }
   }
 
-  // Temperature
   if (activeCurses.has("temperature")) {
     spawnDot(coolButtons);
     spawnDot(coolButtons);
   }
 
-  // Thermometer check
   const heatBar = document.getElementById("heat-bar-wrapper");
   if (activeCurses.has("temperature") && upgrades.thermo > 0) {
     heatBar.style.display = "flex";
@@ -219,7 +211,6 @@ function tryShieldAbsorb(x, y) {
   return false;
 }
 
-// INTERMISSION
 function triggerIntermission() {
   phase = "INTERMISSION";
   clearInterval(decayTimer);
@@ -276,7 +267,6 @@ function toggleReadyVote() {
   }
 }
 
-// SHOP CARDS (NO EMOJIS)
 function renderShopCards() {
   document.getElementById("card-shoes").innerHTML = `
     ${getIconHtml('shoes', 'Shoes')}
@@ -337,7 +327,6 @@ function buyItem(item) {
   updatePanels();
 }
 
-// SIDE PANELS (NO EMOJIS)
 function updatePanels() {
   const uList = document.getElementById("upgrades-list");
   uList.innerHTML = "";
@@ -390,7 +379,6 @@ function updatePanels() {
   }
 }
 
-// CONTROLS & LOGIC
 function useDash() {
   if (upgrades.dash === 0 || dashCharges <= 0 || (dir.x === 0 && dir.y === 0)) return;
   dashCharges--;
@@ -463,7 +451,6 @@ function tick() {
     if (!tryShieldAbsorb(head.x, head.y)) return gameOver("Swallowed by the void!");
   }
 
-  // Poison Center Roll
   let purpleIdx = purpleDots.findIndex(p => p.x === head.x && p.y === head.y);
   if (purpleIdx !== -1) {
     let safeChance = upgrades.poison * 0.20;
@@ -475,7 +462,6 @@ function tick() {
     }
   }
 
-  // Coolant
   let coolIdx = coolButtons.findIndex(c => c.x === head.x && c.y === head.y);
   if (coolIdx !== -1) {
     coolButtons.splice(coolIdx, 1);
@@ -563,11 +549,9 @@ function render(timestamp) {
   ctx.save();
   ctx.translate(canvas.width / 2 - camera.x, canvas.height / 2 - camera.y);
 
-  // Floor
   ctx.fillStyle = "#14141e";
   ctx.fillRect(0, 0, worldGrid * TILE_SIZE, worldGrid * TILE_SIZE);
 
-  // Grid
   ctx.strokeStyle = "rgba(255, 255, 255, 0.03)";
   ctx.lineWidth = 1;
   for (let i = 0; i <= worldGrid; i++) {
@@ -575,7 +559,6 @@ function render(timestamp) {
     ctx.beginPath(); ctx.moveTo(0, i * TILE_SIZE); ctx.lineTo(worldGrid * TILE_SIZE, i * TILE_SIZE); ctx.stroke();
   }
 
-  // Decay
   decayingTiles.forEach((tile, key) => {
     let [x, y] = key.split(",").map(Number);
     if (tile.stage === 1) ctx.fillStyle = "#3e3e50";
@@ -584,44 +567,37 @@ function render(timestamp) {
     ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
   });
 
-  // Planks
   ctx.fillStyle = "#00d2d3";
   bridgePlanks.forEach(key => {
     let [x, y] = key.split(",").map(Number);
     ctx.fillRect(x * TILE_SIZE + 2, y * TILE_SIZE + 2, TILE_SIZE - 4, TILE_SIZE - 4);
   });
 
-  // Exit
   if (exit) {
     ctx.fillStyle = "#ffd700";
     ctx.fillRect(exit.x * TILE_SIZE + 2, exit.y * TILE_SIZE + 2, TILE_SIZE - 4, TILE_SIZE - 4);
   }
 
-  // Dots
   ctx.fillStyle = "#ff4757";
   normalDots.forEach(d => {
     ctx.beginPath(); ctx.arc(d.x * TILE_SIZE + TILE_SIZE / 2, d.y * TILE_SIZE + TILE_SIZE / 2, TILE_SIZE / 3.5, 0, Math.PI * 2); ctx.fill();
   });
 
-  // Poison
   ctx.fillStyle = "#9b59b6";
   purpleDots.forEach(d => {
     ctx.beginPath(); ctx.arc(d.x * TILE_SIZE + TILE_SIZE / 2, d.y * TILE_SIZE + TILE_SIZE / 2, TILE_SIZE / 3.2, 0, Math.PI * 2); ctx.fill();
   });
 
-  // Coolant
   ctx.fillStyle = "#00d2d3";
   coolButtons.forEach(d => {
     ctx.fillRect(d.x * TILE_SIZE + 4, d.y * TILE_SIZE + 4, TILE_SIZE - 8, TILE_SIZE - 8);
   });
 
-  // Yellow Coins
   ctx.fillStyle = "#ffd32a";
   yellowDots.forEach(d => {
     ctx.beginPath(); ctx.arc(d.x * TILE_SIZE + TILE_SIZE / 2, d.y * TILE_SIZE + TILE_SIZE / 2, TILE_SIZE / 2.8, 0, Math.PI * 2); ctx.fill();
   });
 
-  // Snake
   snake.forEach((part, i) => {
     if (isBridging) ctx.fillStyle = i === 0 ? "#00cec9" : "#81ecec";
     else ctx.fillStyle = i === 0 ? "#2ed573" : "#7bed9f";
