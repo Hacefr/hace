@@ -8,7 +8,7 @@
 </head>
 <body>
 
-  <!-- SCREEN 1: RAW AUTH SCREEN -->
+  <!-- SCREEN 1: AUTH SCREEN -->
   <div id="auth-screen">
     <div class="auth-box">
       <div id="auth-choices">
@@ -65,7 +65,7 @@
     </div>
   </div>
 
-  <!-- SCREEN 3: GAMEPLAY & VIEWPORT -->
+  <!-- SCREEN 3: GAMEPLAY VIEWPORT -->
   <div id="main-layout" style="display: none;">
     
     <!-- LEFT PANEL: UPGRADES -->
@@ -116,16 +116,16 @@
       <div id="death-screen" style="display: none;">
         <h2 style="color: #ff4757; font-size: 24px; margin-bottom: 4px;">YOU DIED</h2>
         <p id="death-reason" style="color: #aaa; font-size: 13px; margin-bottom: 14px;">Swallowed by the void.</p>
-        <div style="font-size: 14px; font-weight: bold; color: #ffd700; margin-bottom: 20px;">LEVEL REACHED: <span id="death-level">1</span></div>
-        <button id="death-action-btn" onclick="handleDeathAction()">Spectate Team</button>
+        <div style="font-size: 14px; font-weight: bold; color: #ffd700; margin-bottom: 20px;">FINAL LEVEL: <span id="death-level">1</span></div>
+        <button id="death-action-btn" onclick="handleDeathAction()">Try Again</button>
       </div>
 
       <!-- TEAM WIPE SCREEN -->
       <div id="team-wipe-screen" style="display: none;">
         <h2 style="color: #ff3333; font-size: 26px; margin-bottom: 6px;">TEAM WIPED</h2>
-        <p style="color: #bbb; font-size: 13px; margin-bottom: 14px;">All snakes have perished. No players escaped.</p>
+        <p style="color: #bbb; font-size: 13px; margin-bottom: 14px;">All snakes died. Level progress reset to 1.</p>
         <div style="font-size: 14px; font-weight: bold; color: #ffd700; margin-bottom: 20px;">REACHED LEVEL <span id="wipe-level">1</span></div>
-        <p style="font-size: 11px; color: #777;">Resetting to Lobby...</p>
+        <p style="font-size: 11px; color: #777;">Resetting to lobby...</p>
       </div>
 
       <!-- 3-CARD DRAFT INTERMISSION -->
