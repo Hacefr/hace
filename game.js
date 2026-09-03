@@ -84,11 +84,14 @@ let yellowDots = [];
 let coolButtons = []; 
 let exit = null;
 let decayingTiles = new Map();
-let phase = "MENU"; // "MENU", "LOBBY", "COLLECT", "GREED", "INTERMISSION", "GAMEOVER"
+let phase = "MENU";
 let coins = 0;
 let level = 1;
 
 let camera = { x: 0, y: 0 };
+
+// GHOST-DOT PREVENTION: Tracks consumed coordinates so server sync cannot resurrect them
+let consumedDots = new Set();
 
 // UPGRADES
 let upgrades = { shoes: 0, dash: 0, bridge: 0, poison: 0, eyes: 0, shield: 0, thermo: 0 };
@@ -127,7 +130,7 @@ function resizeCanvas() {
 }
 window.addEventListener("resize", resizeCanvas);
 
-// SINGLEPLAYER LAUNCH
+// SINGLEPLAYER
 function startSingleplayer() {
   isMultiplayer = false;
   document.getElementById("main-menu").style.display = "none";
@@ -140,15 +143,15 @@ function startSingleplayer() {
   requestAnimationFrame(render);
 }
 
-// MULTIPLAYER LAUNCH (Opens Waiting Lobby First!)
+// MULTIPLAYER
 function startMultiplayer() {
   isMultiplayer = true;
   isLobbyReady = false;
+  consumedDots.clear();
   document.getElementById("main-menu").style.display = "none";
   document.getElementById("main-layout").style.display = "flex";
   document.getElementById("chat-container").style.display = "flex";
   
-  // Show Waiting Lobby
   phase = "LOBBY";
   const lobby = document.getElementById("lobby-screen");
   lobby.style.display = "flex";
@@ -177,12 +180,13 @@ function startMultiplayer() {
     }
 
     if (data.type === "PLAYER_UPDATE" || data.type === "VOTE_UPDATE") {
+      if (data.players) serverPlayers = data.players;
       updateLobbyPlayerList();
     }
 
     if (data.type === "LEVEL_START") {
-      // GAME BEGINS: Close lobby & spawn snakes!
       phase = "COLLECT";
+      consumedDots.clear();
       document.getElementById("lobby-screen").style.display = "none";
       document.getElementById("overlay-screen").style.display = "none";
 
@@ -192,7 +196,6 @@ function startMultiplayer() {
       normalDots = data.normalDots;
       purpleDots = data.purpleDots || [];
 
-      // Local player spawn position from server
       let me = serverPlayers[myPlayerId];
       if (me && me.snake && me.snake.length > 0) {
         snake = [...me.snake];
@@ -204,9 +207,18 @@ function startMultiplayer() {
       updateUI();
     }
 
+    // MULTIPLAYER SYNC: Filter out any dots we already ate so they CANNOT respawn as ghosts
     if (data.type === "TICK") {
       serverPlayers = data.players;
-      normalDots = data.normalDots;
+      if (data.normalDots) {
+        normalDots = data.normalDots.filter(d => !consumedDots.has(`${d.x},${d.y}`));
+      }
+      updateUI();
+    }
+
+    if (data.type === "DOT_REMOVED") {
+      consumedDots.add(`${data.x},${data.y}`);
+      normalDots = normalDots.filter(d => !(d.x === data.x && d.y === data.y));
       updateUI();
     }
 
@@ -265,6 +277,7 @@ function sendLobbyReady() {
 
 function initLevel() {
   clearInterval(decayTimer);
+  consumedDots.clear();
   document.getElementById("overlay-screen").style.display = "none";
   document.getElementById("lobby-screen").style.display = "none";
 
@@ -405,9 +418,7 @@ function tryShieldAbsorb(x, y) {
   return false;
 }
 
-// ==========================================
-// 3. 3-CARD DRAFT & INTERMISSION SYSTEM
-// ==========================================
+// 3-CARD DRAFT SYSTEM
 const ALL_CURSES_POOL = [
   { id: "temperature", name: "Temperature", icon: "temperature", desc: "Hit coolant buttons or burn alive!" },
   { id: "nullscape", name: "Nullscape", icon: "nullscape", desc: "Purple rotten dots are fatal poison!" },
@@ -494,7 +505,6 @@ function generateCardChoices() {
 
   let shuffled = [...pool].sort(() => 0.5 - Math.random());
   currentDraftChoices = shuffled.slice(0, 3);
-
   renderDraftCards();
 }
 
@@ -599,9 +609,6 @@ function toggleReadyVote() {
   }
 }
 
-// ==========================================
-// 4. CONTROLS, ABILITIES & GAME LOOP
-// ==========================================
 function useDash() {
   if (upgrades.dash === 0 || dashCharges <= 0 || (dir.x === 0 && dir.y === 0)) return;
   dashCharges--;
@@ -641,6 +648,7 @@ function stopBridging() {
   }
 }
 
+// MAIN TICK LOOP
 function tick() {
   if (phase === "GAMEOVER" || phase === "INTERMISSION" || phase === "MENU" || phase === "LOBBY") return;
 
@@ -711,9 +719,20 @@ function tick() {
   let tail = snake[snake.length - 1];
   bridgePlanks.delete(`${tail.x},${tail.y}`);
 
+  // ==========================================
+  // GHOST-DOT SOLVER: Real-time pickup synchronization
+  // ==========================================
   let eatenNormal = normalDots.findIndex(d => d.x === head.x && d.y === head.y);
   if (eatenNormal !== -1) {
+    let dot = normalDots[eatenNormal];
+    consumedDots.add(`${dot.x},${dot.y}`); // Blacklist dot from respawning
     normalDots.splice(eatenNormal, 1);
+
+    // Tell Render server we ate it right now!
+    if (isMultiplayer && socket && socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type: "EAT_DOT", x: dot.x, y: dot.y }));
+    }
+
     if (normalDots.length === 0) startGreedPhase();
   } 
   else if (phase === "GREED" && yellowDots.some(d => d.x === head.x && d.y === head.y)) {
@@ -815,7 +834,6 @@ function updatePanels() {
   }
 }
 
-// 60FPS CAMERA & DRAWING
 function render(timestamp) {
   if (phase === "MENU") return;
 
@@ -827,7 +845,6 @@ function render(timestamp) {
     lastTick = timestamp;
   }
 
-  // Camera Target Math: Defaults to map center if player hasn't spawned yet
   let targetCamX = (worldGrid * TILE_SIZE) / 2;
   let targetCamY = (worldGrid * TILE_SIZE) / 2;
 
@@ -903,7 +920,7 @@ function render(timestamp) {
     ctx.beginPath(); ctx.arc(d.x * TILE_SIZE + TILE_SIZE / 2, d.y * TILE_SIZE + TILE_SIZE / 2, TILE_SIZE / 2.8, 0, Math.PI * 2); ctx.fill();
   });
 
-  // Local Snake
+  // Local Player
   snake.forEach((part, i) => {
     if (isPurpleKingUnlocked) {
       ctx.fillStyle = i === 0 ? "#8e44ad" : "#a29bfe";
@@ -913,7 +930,7 @@ function render(timestamp) {
     ctx.fillRect(part.x * TILE_SIZE + 1, part.y * TILE_SIZE + 1, TILE_SIZE - 2, TILE_SIZE - 2);
   });
 
-  // Other Multiplayer Peers
+  // Peers
   if (isMultiplayer) {
     Object.values(serverPlayers).forEach(p => {
       if (p.id !== myPlayerId && p.alive && p.snake && p.snake.length > 0) {
@@ -933,7 +950,7 @@ function render(timestamp) {
   requestAnimationFrame(render);
 }
 
-// CHAT SYSTEM
+// CHAT
 const chatInput = document.getElementById("chat-input");
 chatInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && chatInput.value.trim() !== "") {
