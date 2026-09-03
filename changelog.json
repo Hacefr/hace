@@ -1,1 +1,12 @@
-
+{
+  "version": "vA1.0.1",
+  "date": "Alpha Release",
+  "title": "Alpha Patch Notes",
+  "notes": [
+    "Fixed multiplayer ghost dot respawn desync bug",
+    "Added 3-Card Draft roguelite selection during Intermissions",
+    "Added live universal server lobby & Ready Up system",
+    "Fixed camera centering and spawn positions in multiplayer",
+    "Added custom pixel-art icons and fallback system"
+  ]
+}
