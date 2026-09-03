@@ -8,8 +8,37 @@
 </head>
 <body>
 
-  <!-- MAIN MENU -->
-  <div id="main-menu">
+  <!-- SCREEN 1: RAW AUTH SCREEN (LOGIN / SIGN UP) -->
+  <div id="auth-screen">
+    <div class="auth-box">
+      <!-- State 1: Pick Action -->
+      <div id="auth-choices">
+        <button class="menu-btn" onclick="showAuthForm('login')">Log In</button>
+        <button class="menu-btn" onclick="showAuthForm('signup')">Sign Up</button>
+        <button class="menu-btn guest-btn" onclick="playAsGuest()">Play as Guest</button>
+      </div>
+
+      <!-- State 2: Input Form (Hidden initially) -->
+      <form id="auth-form" style="display: none;" onsubmit="handleAuthSubmit(event)">
+        <h3 id="auth-form-title">Log In</h3>
+        <input type="text" id="auth-user" placeholder="Username" required maxlength="15" autocomplete="off" />
+        <input type="password" id="auth-pass" placeholder="Password" required maxlength="30" />
+        <div id="auth-error"></div>
+        <div class="form-buttons">
+          <button type="submit" class="submit-btn" id="auth-submit-btn">Continue</button>
+          <button type="button" class="back-btn" onclick="backToAuthChoices()">Back</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- SCREEN 2: MAIN MENU (Revealed after auth) -->
+  <div id="main-menu" style="display: none;">
+    <div id="account-status">
+      Logged in as: <span id="current-username" style="color: #4CAF50;">Guest</span>
+      <button id="logout-btn" onclick="logout()">Log Out</button>
+    </div>
+
     <div class="menu-options">
       <button class="menu-btn" onclick="startSingleplayer()">Singleplayer</button>
       <button class="menu-btn" onclick="startMultiplayer()" style="color: #3498db;">Multiplayer</button>
@@ -17,7 +46,7 @@
     </div>
   </div>
 
-  <!-- GAME SCREEN -->
+  <!-- SCREEN 3: GAMEPLAY -->
   <div id="main-layout" style="display: none;">
     
     <!-- LEFT PANEL: UPGRADES -->
@@ -50,7 +79,7 @@
       <canvas id="game"></canvas>
       <div id="banner">Use WASD or Arrow Keys</div>
 
-      <!-- LIVE CHAT OVERLAY -->
+      <!-- CHAT -->
       <div id="chat-container">
         <div id="chat-messages"></div>
         <input type="text" id="chat-input" placeholder="Press Enter to chat..." maxlength="60" />
