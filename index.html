@@ -3,22 +3,22 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Empty shell</title>
+  <title>Void Snake</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 
-  <!-- MAIN MENU (Always on top until clicked) -->
+  <!-- MAIN MENU -->
   <div id="main-menu">
     <div class="menu-options">
       <button class="menu-btn" onclick="startSingleplayer()">Singleplayer</button>
-      <button class="menu-btn disabled" disabled>Multiplayer</button>
+      <button class="menu-btn" onclick="startMultiplayer()" style="color: #3498db;">Multiplayer</button>
       <button class="menu-btn disabled" disabled>Skins</button>
     </div>
   </div>
 
   <!-- GAME SCREEN -->
-  <div id="main-layout">
+  <div id="main-layout" style="display: none;">
     
     <!-- LEFT PANEL: UPGRADES -->
     <div class="side-panel" id="upgrades-panel">
@@ -50,6 +50,12 @@
       <canvas id="game"></canvas>
       <div id="banner">Use WASD or Arrow Keys</div>
 
+      <!-- LIVE CHAT OVERLAY -->
+      <div id="chat-container">
+        <div id="chat-messages"></div>
+        <input type="text" id="chat-input" placeholder="Press Enter to chat..." maxlength="60" />
+      </div>
+
       <!-- INTERMISSION SCREEN -->
       <div id="overlay-screen">
         <h2 id="overlay-title">LEVEL COMPLETE!</h2>
@@ -66,7 +72,7 @@
         </div>
 
         <div id="vote-section">
-          <div id="vote-status">Ready to proceed: <span id="vote-count">0</span> / <span id="vote-total">3</span></div>
+          <div id="vote-status">Ready to proceed: <span id="vote-count">0</span> / <span id="vote-total">1</span></div>
           <div id="vote-desc" style="font-size: 11px; color: #888; margin-top: 4px;">(Need 2/3 votes to launch)</div>
           <button id="ready-btn" onclick="toggleReadyVote()">Ready Up</button>
         </div>
