@@ -15,7 +15,7 @@ let yellowDots = [];
 let coolButtons = []; 
 let exit = null;
 let decayingTiles = new Map();
-let phase = "COLLECT"; // "COLLECT", "GREED", "INTERMISSION", "GAMEOVER"
+let phase = "MENU"; // "MENU", "COLLECT", "GREED", "INTERMISSION", "GAMEOVER"
 let coins = 0;
 let level = 1;
 
@@ -23,13 +23,13 @@ let camera = { x: 0, y: 0 };
 
 // UPGRADES INVENTORY
 let upgrades = { 
-  shoes: 0,   // max 3
-  dash: 0,    // max 2
-  bridge: 0,  // max 1
-  poison: 0,  // max 3
-  eyes: 0,    // max 1
-  shield: 0,  // max 2
-  thermo: 0   // max 1
+  shoes: 0,
+  dash: 0,
+  bridge: 0,
+  poison: 0,
+  eyes: 0,
+  shield: 0,
+  thermo: 0
 };
 
 let currentShields = 0;
@@ -46,12 +46,12 @@ let heat = 0;
 let decayTimer = null;
 let lastTick = 0;
 
-// MULTIPLAYER VOTING SYSTEM (3-Player Simulation)
+// MULTIPLAYER VOTES
 let totalPlayers = 3;
 let votesReady = 0;
 let isLocalPlayerReady = false;
 
-// ICON HELPER WITH AUTOMATIC PLACEHOLDER.PNG FALLBACK
+// ICON LOADER WITH PLACEHOLDER FALLBACK
 function getIconHtml(name, alt) {
   return `<img src="Icons/${name}.png" class="item-icon-img" alt="${alt}" onerror="this.onerror=null; this.src='Icons/Placeholder.png';">`;
 }
@@ -63,6 +63,15 @@ function resizeCanvas() {
 }
 window.addEventListener("resize", resizeCanvas);
 resizeCanvas();
+
+// START GAME FROM MAIN MENU
+function startSingleplayer() {
+  document.getElementById("main-menu").style.display = "none";
+  document.getElementById("main-layout").style.display = "flex";
+  resizeCanvas();
+  initLevel();
+  requestAnimationFrame(render);
+}
 
 function initLevel() {
   clearInterval(decayTimer);
@@ -94,7 +103,7 @@ function initLevel() {
   heat = 0;
 
   rollCurses();
-  setBanner(`Level ${level}: Clear red dots!`, "#ff5555");
+  setBanner(`Level ${level}: Clear red dots to unlock exit!`, "#ff5555");
 
   normalDots = [];
   let dotCount = 6 + (level * 3);
@@ -160,7 +169,7 @@ function spawnDot(list) {
 
 function startGreedPhase() {
   phase = "GREED";
-  setBanner("EXIT OPEN! RUN OR GREED FOR GOLD!", "#ffd700");
+  setBanner("EXIT OPEN! ESCAPE OR GREED FOR GOLD!", "#ffd700");
 
   exit = {
     x: Math.floor(Math.random() * (worldGrid - 4)) + 2,
@@ -202,7 +211,7 @@ function tryShieldAbsorb(x, y) {
   if (currentShields > 0) {
     currentShields--;
     decayingTiles.delete(`${x},${y}`);
-    setBanner("🛡️ SHIELD BROKE! SAVED FROM VOID!", "#00d2d3");
+    setBanner("SHIELD BROKE! SAVED FROM VOID!", "#00d2d3");
     updateUI();
     updatePanels();
     return true;
@@ -210,7 +219,7 @@ function tryShieldAbsorb(x, y) {
   return false;
 }
 
-// INTERMISSION & VOTING (Always shows as breathing room)
+// INTERMISSION
 function triggerIntermission() {
   phase = "INTERMISSION";
   clearInterval(decayTimer);
@@ -219,7 +228,6 @@ function triggerIntermission() {
   const shop = document.getElementById("shop-container");
   overlay.style.display = "flex";
 
-  // Check if shop should display (every 4 levels and items remain)
   let isShopLevel = (level % 4 === 0);
   let allMaxed = (
     upgrades.shoes >= 3 && upgrades.dash >= 2 && upgrades.bridge >= 1 &&
@@ -227,21 +235,20 @@ function triggerIntermission() {
   );
 
   if (isShopLevel && !allMaxed) {
-    document.getElementById("overlay-title").innerText = "🏪 THE SHOP IS OPEN!";
+    document.getElementById("overlay-title").innerText = "THE SHOP IS OPEN";
     document.getElementById("overlay-title").style.color = "#ffd700";
-    document.getElementById("overlay-subtitle").innerText = "Spend your gold on survival upgrades!";
+    document.getElementById("overlay-subtitle").innerText = "Spend your gold on upgrades!";
     shop.style.display = "flex";
     renderShopCards();
   } else {
-    document.getElementById("overlay-title").innerText = `LEVEL ${level} COMPLETE!`;
+    document.getElementById("overlay-title").innerText = `LEVEL ${level} COMPLETE`;
     document.getElementById("overlay-title").style.color = "#4CAF50";
     document.getElementById("overlay-subtitle").innerText = "Catch your breath before the next round...";
     shop.style.display = "none";
   }
 
-  // Reset voting state
   isLocalPlayerReady = false;
-  votesReady = 1; // 1 teammate is already waiting ready!
+  votesReady = 1;
   updateVoteUI();
 }
 
@@ -259,18 +266,17 @@ function toggleReadyVote() {
     votesReady++;
     updateVoteUI();
 
-    // Check if majority reached (2 out of 3)
     let needed = Math.ceil(totalPlayers * (2 / 3));
     if (votesReady >= needed) {
       setTimeout(() => {
         level++;
         initLevel();
-      }, 600);
+      }, 500);
     }
   }
 }
 
-// SHOP CARDS GENERATION (With Icons & Fallbacks)
+// SHOP CARDS (NO EMOJIS)
 function renderShopCards() {
   document.getElementById("card-shoes").innerHTML = `
     ${getIconHtml('shoes', 'Shoes')}
@@ -298,7 +304,7 @@ function renderShopCards() {
 
   document.getElementById("card-eyes").innerHTML = `
     ${getIconHtml('eyes', 'Eyes')}
-    <h4>Eagle Eyes</h4><p>Radar for ❄️.</p>
+    <h4>Eagle Eyes</h4><p>Coolant radar.</p>
     <div style="font-size:10px; color:#4CAF50;">${upgrades.eyes}/1</div>
     <button onclick="buyItem('eyes')" ${upgrades.eyes >= 1 || coins < 45 ? 'disabled' : ''}>Buy $45</button>`;
 
@@ -331,7 +337,7 @@ function buyItem(item) {
   updatePanels();
 }
 
-// RENDER LEFT & RIGHT PANELS (WITH ICONS)
+// SIDE PANELS (NO EMOJIS)
 function updatePanels() {
   const uList = document.getElementById("upgrades-list");
   uList.innerHTML = "";
@@ -355,7 +361,7 @@ function updatePanels() {
   }
   if (upgrades.eyes > 0) {
     hasAny = true;
-    uList.innerHTML += `<div class="item-card">${getIconHtml('eyes', 'Eyes')}<div class="item-info"><h5>Eagle Eyes</h5><p>Radar for ❄️ buttons</p></div><div class="item-badge" style="background:#3498db;">1/1</div></div>`;
+    uList.innerHTML += `<div class="item-card">${getIconHtml('eyes', 'Eyes')}<div class="item-info"><h5>Eagle Eyes</h5><p>Radar for coolant</p></div><div class="item-badge" style="background:#3498db;">1/1</div></div>`;
   }
   if (upgrades.shield > 0) {
     hasAny = true;
@@ -373,7 +379,7 @@ function updatePanels() {
     cList.innerHTML = `<div style="font-size: 11px; color: #666;">No active curses. The void sleeps...</div>`;
   } else {
     if (activeCurses.has("temperature")) {
-      cList.innerHTML += `<div class="item-card" style="border-color: #ff4757;">${getIconHtml('temperature', 'Temp')}<div class="item-info"><h5 style="color: #ff6b81;">Temperature</h5><p>Hit ❄️ buttons or burn!</p></div></div>`;
+      cList.innerHTML += `<div class="item-card" style="border-color: #ff4757;">${getIconHtml('temperature', 'Temp')}<div class="item-info"><h5 style="color: #ff6b81;">Temperature</h5><p>Hit coolant or burn!</p></div></div>`;
     }
     if (activeCurses.has("nullscape")) {
       cList.innerHTML += `<div class="item-card" style="border-color: #9b59b6;">${getIconHtml('nullscape', 'Nullscape')}<div class="item-info"><h5 style="color: #a29bfe;">Nullscape</h5><p>Purple dots are poison!</p></div></div>`;
@@ -425,7 +431,7 @@ function stopBridging() {
 }
 
 function tick() {
-  if (phase === "GAMEOVER" || phase === "INTERMISSION") return;
+  if (phase === "GAMEOVER" || phase === "INTERMISSION" || phase === "MENU") return;
 
   if (activeCurses.has("temperature")) {
     heat += 0.35;
@@ -463,13 +469,13 @@ function tick() {
     let safeChance = upgrades.poison * 0.20;
     if (Math.random() < safeChance) {
       purpleDots.splice(purpleIdx, 1);
-      setBanner("🧪 POISON RESISTED! (Safe)", "#a29bfe");
+      setBanner("POISON RESISTED! (Safe)", "#a29bfe");
     } else {
       return gameOver("Touched a poisonous Nullscape dot!");
     }
   }
 
-  // Coolant Buttons
+  // Coolant
   let coolIdx = coolButtons.findIndex(c => c.x === head.x && c.y === head.y);
   if (coolIdx !== -1) {
     coolButtons.splice(coolIdx, 1);
@@ -536,6 +542,8 @@ function updateUI() {
 }
 
 function render(timestamp) {
+  if (phase === "MENU") return;
+
   let speedMultiplier = 1 - (upgrades.shoes * 0.12);
   let tickInterval = Math.max(50, 100 * speedMultiplier);
 
@@ -567,7 +575,7 @@ function render(timestamp) {
     ctx.beginPath(); ctx.moveTo(0, i * TILE_SIZE); ctx.lineTo(worldGrid * TILE_SIZE, i * TILE_SIZE); ctx.stroke();
   }
 
-  // Decay Tiles
+  // Decay
   decayingTiles.forEach((tile, key) => {
     let [x, y] = key.split(",").map(Number);
     if (tile.stage === 1) ctx.fillStyle = "#3e3e50";
@@ -595,16 +603,19 @@ function render(timestamp) {
     ctx.beginPath(); ctx.arc(d.x * TILE_SIZE + TILE_SIZE / 2, d.y * TILE_SIZE + TILE_SIZE / 2, TILE_SIZE / 3.5, 0, Math.PI * 2); ctx.fill();
   });
 
+  // Poison
   ctx.fillStyle = "#9b59b6";
   purpleDots.forEach(d => {
     ctx.beginPath(); ctx.arc(d.x * TILE_SIZE + TILE_SIZE / 2, d.y * TILE_SIZE + TILE_SIZE / 2, TILE_SIZE / 3.2, 0, Math.PI * 2); ctx.fill();
   });
 
+  // Coolant
   ctx.fillStyle = "#00d2d3";
   coolButtons.forEach(d => {
     ctx.fillRect(d.x * TILE_SIZE + 4, d.y * TILE_SIZE + 4, TILE_SIZE - 8, TILE_SIZE - 8);
   });
 
+  // Yellow Coins
   ctx.fillStyle = "#ffd32a";
   yellowDots.forEach(d => {
     ctx.beginPath(); ctx.arc(d.x * TILE_SIZE + TILE_SIZE / 2, d.y * TILE_SIZE + TILE_SIZE / 2, TILE_SIZE / 2.8, 0, Math.PI * 2); ctx.fill();
@@ -661,6 +672,8 @@ function drawRadar(target, color) {
 }
 
 window.addEventListener("keydown", (e) => {
+  if (phase === "MENU") return;
+
   if (e.code === "Space") {
     if (phase === "GAMEOVER") {
       coins = 0; level = 1;
@@ -683,6 +696,3 @@ window.addEventListener("keydown", (e) => {
 window.addEventListener("keyup", (e) => {
   if (e.code === "Space") stopBridging();
 });
-
-initLevel();
-requestAnimationFrame(render);
