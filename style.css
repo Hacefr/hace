@@ -1,0 +1,255 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  user-select: none;
+}
+
+body {
+  background: #09090d;
+  color: #fff;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+#main-layout {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  width: 100vw;
+  height: 100vh;
+  padding: 10px;
+}
+
+/* SIDE PANELS */
+.side-panel {
+  width: 240px;
+  height: min(92vw, 92vh);
+  background: #12121c;
+  border: 2px solid #232332;
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  transition: all 0.3s ease;
+}
+
+.panel-title {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #232332;
+}
+
+.panel-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.item-card {
+  background: #181826;
+  border: 1px solid #2e2e42;
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* PIXEL ART ICON STYLING (WITH AUTOMATIC FALLBACK SCALING) */
+.item-icon-img {
+  width: 38px;
+  height: 38px;
+  image-rendering: pixelated; /* Keeps your Piskel art crisp */
+  object-fit: contain;
+  border-radius: 4px;
+  background: rgba(0,0,0,0.3);
+}
+
+.item-info { flex: 1; }
+.item-info h5 { font-size: 12px; margin-bottom: 2px; }
+.item-info p { font-size: 10px; color: #888; line-height: 1.2; }
+.item-badge { font-size: 10px; font-weight: bold; padding: 2px 6px; border-radius: 4px; }
+
+/* HIDE SIDE PANELS ON TINY COMPANION SCREENS */
+@media (max-width: 950px) {
+  .side-panel { display: none !important; }
+}
+
+/* CENTER GAME VIEWPORT */
+#viewport-container {
+  position: relative;
+  width: min(92vw, 92vh);
+  height: min(92vw, 92vh);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+  border: 2px solid #2a2a35;
+  flex-shrink: 0;
+}
+
+canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  background: #0e0e14;
+}
+
+#hud {
+  position: absolute;
+  top: 10px; left: 10px; right: 10px;
+  display: flex;
+  justify-content: space-between;
+  pointer-events: none;
+  font-size: clamp(10px, 2.3vmin, 15px);
+  font-weight: 700;
+  z-index: 10;
+}
+
+.badge {
+  background: rgba(10, 10, 15, 0.8);
+  backdrop-filter: blur(6px);
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+#ability-bar {
+  position: absolute;
+  bottom: 12px; left: 12px;
+  display: flex;
+  gap: 8px;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.ability-slot {
+  background: rgba(10, 10, 15, 0.85);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: bold;
+  color: #888;
+}
+.ability-slot.active { color: #fff; border-color: #ffd700; }
+
+#banner {
+  position: absolute;
+  bottom: 12px; left: 50%;
+  transform: translateX(-50%);
+  font-size: clamp(10px, 2.2vmin, 14px);
+  font-weight: 600;
+  background: rgba(10, 10, 15, 0.85);
+  padding: 5px 14px;
+  border-radius: 20px;
+  pointer-events: none;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  white-space: nowrap;
+  z-index: 10;
+}
+
+#heat-bar-wrapper {
+  position: absolute;
+  top: 48px; left: 50%;
+  transform: translateX(-50%);
+  width: 200px;
+  background: rgba(0,0,0,0.8);
+  border: 1px solid #ff4757;
+  border-radius: 10px;
+  padding: 3px;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  z-index: 10;
+}
+#heat-fill {
+  width: 0%;
+  height: 8px;
+  background: linear-gradient(90deg, #ffd32a, #ff4757);
+  border-radius: 6px;
+  transition: width 0.1s linear;
+}
+
+/* INTERMISSION MODAL */
+#overlay-screen {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(10, 10, 15, 0.95);
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+  padding: 20px;
+  text-align: center;
+}
+
+.shop-cards {
+  display: flex;
+  gap: 10px;
+  margin: 16px 0;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: 650px;
+}
+
+.shop-card {
+  background: #181826;
+  border: 2px solid #333348;
+  border-radius: 8px;
+  padding: 8px;
+  width: 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.shop-card h4 { font-size: 11px; color: #ffd700; }
+.shop-card p { font-size: 9px; color: #aaa; min-height: 22px; }
+.shop-card button {
+  background: #4CAF50;
+  border: none;
+  color: white;
+  padding: 5px 10px;
+  font-weight: bold;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 10px;
+}
+.shop-card button:disabled { background: #444; color: #777; cursor: not-allowed; }
+
+/* READY VOTING */
+#vote-section {
+  margin-top: 15px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+#vote-status { font-size: 14px; font-weight: bold; color: #ffd700; }
+#ready-btn {
+  background: #3498db;
+  border: none;
+  color: white;
+  padding: 10px 28px;
+  border-radius: 6px;
+  font-weight: bold;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.2s;
+}
+#ready-btn.ready { background: #2ecc71; }
