@@ -1,10 +1,76 @@
+// ==========================================
+// 1. ACCOUNT & AUTHENTICATION SYSTEM
+// ==========================================
+let currentUser = localStorage.getItem("saved_username") || null;
+let currentAuthMode = "login"; // "login" or "signup"
+
+// Check if player was already logged in previously
+window.addEventListener("DOMContentLoaded", () => {
+  if (currentUser) {
+    proceedToMainMenu(currentUser);
+  }
+});
+
+function showAuthForm(mode) {
+  currentAuthMode = mode;
+  document.getElementById("auth-choices").style.display = "none";
+  document.getElementById("auth-form").style.display = "flex";
+  document.getElementById("auth-form-title").innerText = (mode === "login") ? "Log In" : "Sign Up";
+  document.getElementById("auth-error").innerText = "";
+  document.getElementById("auth-user").value = "";
+  document.getElementById("auth-pass").value = "";
+  document.getElementById("auth-user").focus();
+}
+
+function backToAuthChoices() {
+  document.getElementById("auth-form").style.display = "none";
+  document.getElementById("auth-choices").style.display = "flex";
+  document.getElementById("auth-error").innerText = "";
+}
+
+function playAsGuest() {
+  proceedToMainMenu("Guest_" + Math.floor(Math.random() * 899 + 100));
+}
+
+function handleAuthSubmit(e) {
+  e.preventDefault();
+  const user = document.getElementById("auth-user").value.trim();
+  const pass = document.getElementById("auth-pass").value.trim();
+
+  if (user.length < 3 || pass.length < 3) {
+    document.getElementById("auth-error").innerText = "Must be at least 3 characters.";
+    return;
+  }
+
+  // Save login state locally
+  localStorage.setItem("saved_username", user);
+  proceedToMainMenu(user);
+}
+
+function proceedToMainMenu(username) {
+  currentUser = username;
+  document.getElementById("auth-screen").style.display = "none";
+  document.getElementById("main-menu").style.display = "flex";
+  document.getElementById("current-username").innerText = username;
+}
+
+function logout() {
+  localStorage.removeItem("saved_username");
+  currentUser = null;
+  document.getElementById("main-menu").style.display = "none";
+  document.getElementById("auth-screen").style.display = "flex";
+  backToAuthChoices();
+}
+
+// ==========================================
+// 2. CORE GAME ENGINE & STATE
+// ==========================================
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
 const TILE_SIZE = 34;       
 let worldGrid = 24;
 
-// GAME STATE
 let isMultiplayer = false;
 let socket = null;
 let myPlayerId = null;
@@ -25,10 +91,11 @@ let level = 1;
 
 let camera = { x: 0, y: 0 };
 
-// UPGRADES
+// UPGRADES INVENTORY
 let upgrades = { shoes: 0, dash: 0, bridge: 0, poison: 0, eyes: 0, shield: 0, thermo: 0 };
 let currentShields = 0;
 let dashCharges = 0;
+let dashCooldownTimer = null;
 let isBridging = false;
 let bridgeStamina = 100;
 let bridgeCooldown = 0;
@@ -43,6 +110,7 @@ let lastTick = 0;
 let purpleDotsEatenThisRun = 0;
 let isPurpleKingUnlocked = localStorage.getItem("skin_purple_king") === "true";
 
+// SAFE ICON LOADER (Never throws a 404)
 function getIconHtml(name, alt) {
   const fallbackSvg = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='44' height='44' viewBox='0 0 44 44'><rect width='44' height='44' fill='%2322222e'/><text x='22' y='28' font-size='18' text-anchor='middle' fill='%23666'>?</text></svg>";
   return `<img src="Icons/${name}.png" class="item-icon-img" alt="${alt}" onerror="this.onerror=null; this.src='Icons/Placeholder.png'; this.onerror=function(){this.src='${fallbackSvg}';};">`;
@@ -75,7 +143,6 @@ function startMultiplayer() {
   document.getElementById("chat-container").style.display = "flex";
   setBanner("Connecting to live server...", "#ffd700");
 
-  // YOUR LIVE RENDER SERVER LINK
   socket = new WebSocket("wss://hace-hsrp.onrender.com");
 
   socket.onopen = () => {
@@ -137,7 +204,7 @@ function startMultiplayer() {
   };
 
   socket.onclose = () => {
-    setBanner("Disconnected from server. Reconnecting in 3s...", "#ff3333");
+    setBanner("Disconnected from server.", "#ff3333");
   };
 }
 
@@ -461,7 +528,6 @@ function tick() {
   dir = nextDir;
   if (dir.x === 0 && dir.y === 0) return;
 
-  // If multiplayer, tell Render server our direction!
   if (isMultiplayer && socket && socket.readyState === WebSocket.OPEN) {
     socket.send(JSON.stringify({ type: "MOVE", dir }));
   }
@@ -476,7 +542,6 @@ function tick() {
     if (!tryShieldAbsorb(head.x, head.y)) return gameOver("Swallowed by the void!");
   }
 
-  // POISON CENTER CHECK + PURPLE KING ACHIEVEMENT TRACKER!
   let purpleIdx = purpleDots.findIndex(p => p.x === head.x && p.y === head.y);
   if (purpleIdx !== -1) {
     let safeChance = upgrades.poison * 0.20;
@@ -485,7 +550,6 @@ function tick() {
       purpleDotsEatenThisRun++;
       setBanner(`POISON RESISTED! (${purpleDotsEatenThisRun}/5 for Purple King)`, "#a29bfe");
 
-      // Check Purple King Unlock
       if (purpleDotsEatenThisRun >= 5 && !isPurpleKingUnlocked) {
         isPurpleKingUnlocked = true;
         localStorage.setItem("skin_purple_king", "true");
@@ -624,19 +688,19 @@ function render(timestamp) {
   // DRAW LOCAL PLAYER (Or Purple King if equipped!)
   snake.forEach((part, i) => {
     if (isPurpleKingUnlocked) {
-      ctx.fillStyle = i === 0 ? "#8e44ad" : "#a29bfe"; // Royal Purple King skin!
+      ctx.fillStyle = i === 0 ? "#8e44ad" : "#a29bfe";
     } else {
-      ctx.fillStyle = i === 0 ? "#2ed573" : "#7bed9f"; // Default Green
+      ctx.fillStyle = i === 0 ? "#2ed573" : "#7bed9f";
     }
     ctx.fillRect(part.x * TILE_SIZE + 1, part.y * TILE_SIZE + 1, TILE_SIZE - 2, TILE_SIZE - 2);
   });
 
-  // DRAW OTHER MULTIPLAYER PLAYERS!
+  // DRAW OTHER PLAYERS IN MULTIPLAYER
   if (isMultiplayer) {
     Object.values(serverPlayers).forEach(p => {
       if (p.id !== myPlayerId && p.alive && p.snake.length > 0) {
         p.snake.forEach((part, i) => {
-          ctx.fillStyle = i === 0 ? "#e74c3c" : "#ff7675"; // Other players render Red!
+          ctx.fillStyle = i === 0 ? "#e74c3c" : "#ff7675";
           ctx.fillRect(part.x * TILE_SIZE + 1, part.y * TILE_SIZE + 1, TILE_SIZE - 2, TILE_SIZE - 2);
         });
       }
@@ -672,7 +736,7 @@ function addChatMessage(sender, text) {
 }
 
 window.addEventListener("keydown", (e) => {
-  if (document.activeElement === chatInput) return; // Typing in chat
+  if (document.activeElement === chatInput) return;
 
   if (e.key === "Enter") {
     chatInput.focus();
