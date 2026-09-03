@@ -17,18 +17,15 @@ body {
   overflow: hidden;
 }
 
-/* MAIN MENU OVERLAY */
 #main-menu {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
+  top: 0; left: 0;
+  width: 100vw; height: 100vh;
   background: #2b2b2b;
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 99999; /* Forces menu to front */
+  z-index: 99999;
 }
 
 .menu-options {
@@ -59,19 +56,16 @@ body {
   cursor: not-allowed;
 }
 
-/* GAME LAYOUT */
 #main-layout {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 20px;
-  width: 100vw;
-  height: 100vh;
+  width: 100vw; height: 100vh;
   padding: 10px;
   background: #09090d;
 }
 
-/* SIDE PANELS */
 .side-panel {
   width: 250px;
   height: min(92vw, 92vh);
@@ -133,7 +127,6 @@ body {
   .side-panel { display: none !important; }
 }
 
-/* CENTER GAME VIEWPORT */
 #viewport-container {
   position: relative;
   width: min(92vw, 92vh);
@@ -146,8 +139,7 @@ body {
 }
 
 canvas {
-  width: 100%;
-  height: 100%;
+  width: 100%; height: 100%;
   display: block;
   background: #0e0e14;
 }
@@ -155,8 +147,7 @@ canvas {
 #hud {
   position: absolute;
   top: 10px; left: 10px; right: 10px;
-  display: flex;
-  justify-content: space-between;
+  display: flex; justify-content: space-between;
   pointer-events: none;
   font-size: clamp(10px, 2.3vmin, 15px);
   font-weight: 700;
@@ -174,8 +165,7 @@ canvas {
 #ability-bar {
   position: absolute;
   bottom: 12px; left: 12px;
-  display: flex;
-  gap: 8px;
+  display: flex; gap: 8px;
   z-index: 10;
   pointer-events: none;
 }
@@ -221,11 +211,46 @@ canvas {
   z-index: 10;
 }
 #heat-fill {
-  width: 0%;
-  height: 8px;
+  width: 0%; height: 8px;
   background: linear-gradient(90deg, #ffd32a, #ff4757);
   border-radius: 6px;
   transition: width 0.1s linear;
+}
+
+/* CHAT BOX */
+#chat-container {
+  position: absolute;
+  bottom: 45px; left: 12px;
+  width: 240px;
+  background: rgba(10, 10, 15, 0.7);
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  padding: 6px;
+  display: none;
+  flex-direction: column;
+  z-index: 15;
+}
+
+#chat-messages {
+  height: 80px;
+  overflow-y: auto;
+  font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  word-break: break-word;
+}
+
+#chat-input {
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid #444;
+  border-radius: 4px;
+  color: white;
+  padding: 4px 6px;
+  font-size: 11px;
+  outline: none;
+  margin-top: 4px;
 }
 
 /* INTERMISSION MODAL */
