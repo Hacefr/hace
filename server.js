@@ -38,7 +38,13 @@ function resetServer() {
   purpleDots = [];
   yellowDots = [];
   exit = null;
-  console.log("Server reset to clean Level 1 Lobby.");
+  Object.values(players).forEach(p => {
+    p.alive = false;
+    p.escaped = false;
+    p.ready = false;
+    p.snake = [];
+  });
+  console.log("Server state reset to clean Level 1 Lobby.");
 }
 
 function startLevel() {
@@ -56,7 +62,7 @@ function startLevel() {
   let mid = Math.floor(worldGrid / 2);
   let offset = 0;
 
-  // Revive and spawn all players
+  // Revive and spawn all players at center
   Object.values(players).forEach(p => {
     p.alive = true;
     p.escaped = false;
@@ -87,7 +93,6 @@ function startLevel() {
   });
 }
 
-// CHECK IF EVERYONE HAS EITHER ESCAPED OR DIED
 function checkRoundCompletion() {
   const playerList = Object.values(players);
   if (playerList.length === 0) return;
@@ -98,23 +103,22 @@ function checkRoundCompletion() {
     const anyEscaped = playerList.some(p => p.escaped);
 
     if (anyEscaped) {
-      // At least 1 player escaped: TEAM WINS THE LEVEL!
+      // Advance to Intermission
       phase = "INTERMISSION";
       broadcast({ type: "INTERMISSION_START", level });
     } else {
-      // Everyone died: TEAM WIPE
+      // Team Wipe: Reset level to 1
       phase = "TEAM_WIPED";
       broadcast({
         type: "TEAM_WIPED",
         level,
-        message: "EVERYONE DIED! No players escaped."
+        message: "TEAM WIPED! All players died."
       });
 
       setTimeout(() => {
         resetServer();
-        Object.values(players).forEach(p => { p.ready = false; p.alive = false; p.escaped = false; });
-        broadcast({ type: "RETURN_TO_LOBBY", players: getPublicPlayers() });
-      }, 6000);
+        broadcast({ type: "RETURN_TO_LOBBY", level: 1, players: getPublicPlayers() });
+      }, 5000);
     }
   }
 }
@@ -174,10 +178,10 @@ wss.on('connection', (ws) => {
         }
       }
 
-      // INDIVIDUAL PLAYER ESCAPES THROUGH EXIT
+      // Individual extraction
       if (data.type === "TOUCH_EXIT" && phase === "GREED" && players[id].alive && !players[id].escaped) {
         players[id].escaped = true;
-        players[id].alive = false; // Despawn body from board
+        players[id].alive = false;
         players[id].snake = [];
 
         broadcast({
@@ -190,7 +194,7 @@ wss.on('connection', (ws) => {
         checkRoundCompletion();
       }
 
-      // INDIVIDUAL PLAYER DEATH
+      // Individual death
       if (data.type === "PLAYER_DIED" && players[id].alive) {
         players[id].alive = false;
         players[id].snake = [];
@@ -251,12 +255,14 @@ function checkVotes() {
   });
 
   if (readyCount >= needed && activeList.length > 0) {
-    if (phase === "INTERMISSION") level++;
+    if (phase === "INTERMISSION") {
+      level++; // Advance level count
+    }
     startLevel();
   }
 }
 
-// 5-Minute Inactivity Kick
+// Inactivity monitor
 setInterval(() => {
   const now = Date.now();
   Object.values(players).forEach(p => {
@@ -286,7 +292,7 @@ function getPublicPlayers() {
   return clean;
 }
 
-// 100ms Server Sync
+// 100ms Sync
 setInterval(() => {
   if (phase === "COLLECT" || phase === "GREED") {
     broadcast({
