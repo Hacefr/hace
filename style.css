@@ -17,7 +17,8 @@ body {
   overflow: hidden;
 }
 
-#main-menu {
+/* AUTH & MENU SHARED STYLING */
+#auth-screen, #main-menu {
   position: fixed;
   top: 0; left: 0;
   width: 100vw; height: 100vh;
@@ -28,7 +29,7 @@ body {
   z-index: 99999;
 }
 
-.menu-options {
+.auth-box, .menu-options {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -56,6 +57,100 @@ body {
   cursor: not-allowed;
 }
 
+.guest-btn {
+  font-size: 20px;
+  color: #888888;
+  margin-top: 10px;
+}
+
+/* RAW AUTH FORM */
+#auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 260px;
+}
+
+#auth-form-title {
+  font-size: 24px;
+  font-weight: 700;
+  text-align: center;
+  margin-bottom: 6px;
+}
+
+#auth-form input {
+  background: #1e1e1e;
+  border: 1px solid #444;
+  border-radius: 6px;
+  color: white;
+  padding: 10px 14px;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+#auth-form input:focus {
+  border-color: #3498db;
+}
+
+#auth-error {
+  font-size: 11px;
+  color: #ff5555;
+  min-height: 16px;
+  text-align: center;
+}
+
+.form-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.submit-btn {
+  flex: 2;
+  background: #3498db;
+  border: none;
+  color: white;
+  padding: 10px;
+  border-radius: 6px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.back-btn {
+  flex: 1;
+  background: #444;
+  border: none;
+  color: white;
+  padding: 10px;
+  border-radius: 6px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* TOP STATUS BAR IN MENU */
+#account-status {
+  position: absolute;
+  top: 20px;
+  right: 24px;
+  font-size: 13px;
+  color: #aaa;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+#logout-btn {
+  background: none;
+  border: 1px solid #555;
+  color: #aaa;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+#logout-btn:hover { border-color: #ff5555; color: #ff5555; }
+
+/* GAMEPLAY VIEWPORT & PANELS */
 #main-layout {
   display: flex;
   align-items: center;
@@ -217,7 +312,6 @@ canvas {
   transition: width 0.1s linear;
 }
 
-/* CHAT BOX */
 #chat-container {
   position: absolute;
   bottom: 45px; left: 12px;
@@ -253,7 +347,6 @@ canvas {
   margin-top: 4px;
 }
 
-/* INTERMISSION MODAL */
 #overlay-screen {
   position: absolute;
   top: 0; left: 0; right: 0; bottom: 0;
