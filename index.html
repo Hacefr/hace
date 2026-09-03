@@ -11,14 +11,12 @@
   <!-- SCREEN 1: RAW AUTH SCREEN (LOGIN / SIGN UP) -->
   <div id="auth-screen">
     <div class="auth-box">
-      <!-- State 1: Pick Action -->
       <div id="auth-choices">
         <button class="menu-btn" onclick="showAuthForm('login')">Log In</button>
         <button class="menu-btn" onclick="showAuthForm('signup')">Sign Up</button>
         <button class="menu-btn guest-btn" onclick="playAsGuest()">Play as Guest</button>
       </div>
 
-      <!-- State 2: Input Form (Hidden initially) -->
       <form id="auth-form" style="display: none;" onsubmit="handleAuthSubmit(event)">
         <h3 id="auth-form-title">Log In</h3>
         <input type="text" id="auth-user" placeholder="Username" required maxlength="15" autocomplete="off" />
@@ -44,14 +42,12 @@
       <button class="menu-btn" onclick="startMultiplayer()" style="color: #3498db;">Multiplayer</button>
       <button class="menu-btn disabled" disabled>Skins</button>
 
-      <!-- ALPHA GUEST DISCLAIMER -->
       <div id="alpha-disclaimer">
         Notice: Guest mode will be discontinued after Alpha.<br>
         Multiplayer will require an account; guests will only be able to play Singleplayer.
       </div>
     </div>
 
-    <!-- VERSION TAG -->
     <div id="version-tag">vA1.0.1</div>
   </div>
 
@@ -94,22 +90,36 @@
         <input type="text" id="chat-input" placeholder="Press Enter to chat..." maxlength="60" />
       </div>
 
-      <!-- INTERMISSION SCREEN -->
+      <!-- INTERMISSION SCREEN (3-CARD DRAFT) -->
       <div id="overlay-screen">
-        <h2 id="overlay-title">LEVEL COMPLETE!</h2>
-        <p id="overlay-subtitle">Catch your breath before the next round...</p>
-
-        <div class="shop-cards" id="shop-container" style="display: none;">
-          <div class="shop-card" id="card-shoes"></div>
-          <div class="shop-card" id="card-dash"></div>
-          <div class="shop-card" id="card-bridge"></div>
-          <div class="shop-card" id="card-poison"></div>
-          <div class="shop-card" id="card-eyes"></div>
-          <div class="shop-card" id="card-shield"></div>
-          <div class="shop-card" id="card-thermo"></div>
+        <!-- Hand-drawn Logo Header -->
+        <div id="draft-logo-container">
+          <img id="draft-logo" class="draft-logo-img" src="Icons/upgrades.png" alt="Draft Phase" onerror="this.onerror=null; this.src='Icons/Placeholder.png';" />
         </div>
 
-        <div id="vote-section">
+        <p id="overlay-subtitle">Pick 1 to take into the next zone</p>
+
+        <!-- 3 Draft Cards -->
+        <div id="draft-cards-container">
+          <div class="draft-card" id="choice-1" onclick="selectDraftChoice(0)"></div>
+          <div class="draft-card" id="choice-2" onclick="selectDraftChoice(1)"></div>
+          <div class="draft-card" id="choice-3" onclick="selectDraftChoice(2)"></div>
+        </div>
+
+        <!-- Draft Controls & Reroll Button (Bottom Right) -->
+        <div id="draft-bottom-bar">
+          <button id="skip-draft-btn" onclick="skipDraft()">Skip / Continue</button>
+
+          <div id="reroll-container">
+            <button id="reroll-btn" onclick="rerollDraftChoices()">
+              <span id="reroll-text">Reroll</span>
+              <span id="reroll-count">3 Left</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Voting Section -->
+        <div id="vote-section" style="display: none;">
           <div id="vote-status">Ready to proceed: <span id="vote-count">0</span> / <span id="vote-total">1</span></div>
           <div id="vote-desc" style="font-size: 11px; color: #888; margin-top: 4px;">(Need 2/3 votes to launch)</div>
           <button id="ready-btn" onclick="toggleReadyVote()">Ready Up</button>
