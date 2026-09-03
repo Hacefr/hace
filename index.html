@@ -41,6 +41,7 @@
       <button class="menu-btn" onclick="startSingleplayer()">Singleplayer</button>
       <button class="menu-btn" onclick="startMultiplayer()" style="color: #3498db;">Multiplayer</button>
       <button class="menu-btn disabled" disabled>Skins</button>
+      <button class="menu-btn patch-notes-btn" onclick="openChangelog()">Patch Notes</button>
 
       <div id="alpha-disclaimer">
         Notice: Guest mode will be discontinued after Alpha.<br>
@@ -48,7 +49,21 @@
       </div>
     </div>
 
-    <div id="version-tag">vA1.0.1</div>
+    <!-- VERSION TAG (CLICKABLE TO VIEW CHANGELOG) -->
+    <div id="version-tag" onclick="openChangelog()">vA1.0.1</div>
+  </div>
+
+  <!-- CHANGELOG MODAL OVERLAY -->
+  <div id="changelog-modal" style="display: none;">
+    <div class="changelog-box">
+      <div class="changelog-header">
+        <h3 id="changelog-title">Patch Notes</h3>
+        <span id="changelog-badge">vA1.0.1</span>
+      </div>
+      <div id="changelog-date" style="font-size: 11px; color: #888; margin-bottom: 12px;"></div>
+      <ul id="changelog-list"></ul>
+      <button class="changelog-close-btn" onclick="closeChangelog()">Close</button>
+    </div>
   </div>
 
   <!-- SCREEN 3: GAMEPLAY & LOBBY VIEWPORT -->
@@ -94,9 +109,7 @@
       <div id="lobby-screen" style="display: none;">
         <h2 id="lobby-title">MULTIPLAYER LOBBY</h2>
         <p id="lobby-status">Connecting to universal server...</p>
-
         <div id="lobby-player-list"></div>
-
         <button id="lobby-ready-btn" onclick="sendLobbyReady()">Ready Up</button>
       </div>
 
