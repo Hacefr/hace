@@ -167,7 +167,7 @@ body {
   border-radius: 6px;
 }
 
-/* VERSION TAG (BOTTOM-RIGHT) */
+/* VERSION TAG */
 #version-tag {
   position: absolute;
   bottom: 16px;
@@ -350,7 +350,7 @@ canvas {
   position: absolute;
   bottom: 45px; left: 12px;
   width: 240px;
-  background: rgba(10, 10, 15, 0.7);
+  background: rgba(10, 10, 15, 0.8);
   backdrop-filter: blur(4px);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 6px;
@@ -379,6 +379,84 @@ canvas {
   font-size: 11px;
   outline: none;
   margin-top: 4px;
+}
+
+/* =========================================
+   MULTIPLAYER LOBBY SCREEN
+========================================= */
+#lobby-screen {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(10, 10, 15, 0.95);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 25;
+  padding: 20px;
+  text-align: center;
+}
+
+#lobby-title {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  color: #3498db;
+  margin-bottom: 4px;
+}
+
+#lobby-status {
+  font-size: 12px;
+  color: #aaa;
+  margin-bottom: 20px;
+}
+
+#lobby-player-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  max-width: 320px;
+  margin-bottom: 24px;
+}
+
+.lobby-player-row {
+  background: #181824;
+  border: 1px solid #2e2e42;
+  border-radius: 6px;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+}
+
+.lobby-ready-tag {
+  font-size: 10px;
+  font-weight: bold;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+#lobby-ready-btn {
+  background: #3498db;
+  border: none;
+  color: white;
+  padding: 12px 36px;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+  transition: all 0.2s;
+}
+
+#lobby-ready-btn:hover {
+  transform: scale(1.05);
+}
+
+#lobby-ready-btn.ready {
+  background: #2ecc71;
 }
 
 /* =========================================
@@ -472,7 +550,6 @@ canvas {
   border-radius: 4px;
 }
 
-/* BOTTOM BAR & REROLL */
 #draft-bottom-bar {
   display: flex;
   align-items: center;
@@ -535,7 +612,6 @@ canvas {
   border-radius: 4px;
 }
 
-/* READY VOTING */
 #vote-section {
   margin-top: 15px;
   display: flex;
