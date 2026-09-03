@@ -51,7 +51,7 @@
     <div id="version-tag">vA1.0.1</div>
   </div>
 
-  <!-- SCREEN 3: GAMEPLAY -->
+  <!-- SCREEN 3: GAMEPLAY & LOBBY VIEWPORT -->
   <div id="main-layout" style="display: none;">
     
     <!-- LEFT PANEL: UPGRADES -->
@@ -84,29 +84,36 @@
       <canvas id="game"></canvas>
       <div id="banner">Use WASD or Arrow Keys</div>
 
-      <!-- CHAT -->
+      <!-- CHAT OVERLAY -->
       <div id="chat-container">
         <div id="chat-messages"></div>
         <input type="text" id="chat-input" placeholder="Press Enter to chat..." maxlength="60" />
       </div>
 
+      <!-- MULTIPLAYER LOBBY MODAL -->
+      <div id="lobby-screen" style="display: none;">
+        <h2 id="lobby-title">MULTIPLAYER LOBBY</h2>
+        <p id="lobby-status">Connecting to universal server...</p>
+
+        <div id="lobby-player-list"></div>
+
+        <button id="lobby-ready-btn" onclick="sendLobbyReady()">Ready Up</button>
+      </div>
+
       <!-- INTERMISSION SCREEN (3-CARD DRAFT) -->
       <div id="overlay-screen">
-        <!-- Hand-drawn Logo Header -->
         <div id="draft-logo-container">
           <img id="draft-logo" class="draft-logo-img" src="Icons/upgrades.png" alt="Draft Phase" onerror="this.onerror=null; this.src='Icons/Placeholder.png';" />
         </div>
 
         <p id="overlay-subtitle">Pick 1 to take into the next zone</p>
 
-        <!-- 3 Draft Cards -->
         <div id="draft-cards-container">
           <div class="draft-card" id="choice-1" onclick="selectDraftChoice(0)"></div>
           <div class="draft-card" id="choice-2" onclick="selectDraftChoice(1)"></div>
           <div class="draft-card" id="choice-3" onclick="selectDraftChoice(2)"></div>
         </div>
 
-        <!-- Draft Controls & Reroll Button (Bottom Right) -->
         <div id="draft-bottom-bar">
           <button id="skip-draft-btn" onclick="skipDraft()">Skip / Continue</button>
 
@@ -118,7 +125,6 @@
           </div>
         </div>
 
-        <!-- Voting Section -->
         <div id="vote-section" style="display: none;">
           <div id="vote-status">Ready to proceed: <span id="vote-count">0</span> / <span id="vote-total">1</span></div>
           <div id="vote-desc" style="font-size: 11px; color: #888; margin-top: 4px;">(Need 2/3 votes to launch)</div>
