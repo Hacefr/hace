@@ -180,13 +180,18 @@ window.addEventListener("resize", resizeCanvas);
 function startSingleplayer() {
   isMultiplayer = false;
   isEscaped = false;
+  level = 1;
+  coins = 0;
+  upgrades = { shoes: 0, dash: 0, bridge: 0, poison: 0, eyes: 0, shield: 0, thermo: 0 };
+  activeCurses.clear();
+
   document.getElementById("main-menu").style.display = "none";
   document.getElementById("main-layout").style.display = "flex";
   document.getElementById("chat-container").style.display = "none";
   document.getElementById("lobby-screen").style.display = "none";
   document.getElementById("death-screen").style.display = "none";
   document.getElementById("team-wipe-screen").style.display = "none";
-  phase = "COLLECT";
+
   resizeCanvas();
   initLevel();
   requestAnimationFrame(render);
@@ -197,7 +202,10 @@ function startMultiplayer() {
   isMultiplayer = true;
   isLobbyReady = false;
   isEscaped = false;
+  level = 1;
   consumedDots.clear();
+  activeCurses.clear();
+
   document.getElementById("main-menu").style.display = "none";
   document.getElementById("main-layout").style.display = "flex";
   document.getElementById("chat-container").style.display = "flex";
@@ -236,10 +244,21 @@ function startMultiplayer() {
       updateLobbyPlayerList();
     }
 
+    // NEW LEVEL START (MULTIPLAYER BOARD PURGE & REGEN)
     if (data.type === "LEVEL_START") {
       phase = "COLLECT";
       isEscaped = false;
       consumedDots.clear();
+      clearInterval(decayTimer);
+
+      // Purge old floor artifacts
+      exit = null;
+      decayingTiles.clear();
+      bridgePlanks.clear();
+      yellowDots = [];
+      coolButtons = [];
+      heat = 0;
+
       document.getElementById("lobby-screen").style.display = "none";
       document.getElementById("overlay-screen").style.display = "none";
       document.getElementById("death-screen").style.display = "none";
@@ -254,11 +273,14 @@ function startMultiplayer() {
       let me = serverPlayers[myPlayerId];
       if (me && me.snake && me.snake.length > 0) {
         snake = [...me.snake];
+        dir = { x: 0, y: 0 };
+        nextDir = { x: 0, y: 0 };
         camera.x = snake[0].x * TILE_SIZE;
         camera.y = snake[0].y * TILE_SIZE;
       }
 
       setBanner(`Level ${level}: Clear red dots!`, "#ff5555");
+      updatePanels();
       updateUI();
     }
 
@@ -282,17 +304,15 @@ function startMultiplayer() {
       setBanner("EXIT OPEN! ESCAPE OR GREED FOR GOLD!", "#ffd700");
     }
 
-    // A PLAYER ESCAPES THROUGH EXIT
     if (data.type === "PLAYER_ESCAPED") {
       if (data.players) serverPlayers = data.players;
       if (data.id === myPlayerId) {
-        setBanner("YOU ESCAPED! Spectating remaining teammates...", "#4CAF50");
+        setBanner("YOU ESCAPED! Spectating teammates...", "#4CAF50");
       } else {
         setBanner(`${data.name} escaped through the exit!`, "#ffd700");
       }
     }
 
-    // A PLAYER DIES
     if (data.type === "PLAYER_FELL") {
       if (data.players) serverPlayers = data.players;
       if (data.id !== myPlayerId) {
@@ -300,16 +320,17 @@ function startMultiplayer() {
       }
     }
 
-    // ALL FINISHED: AT LEAST 1 ESCAPED -> OPEN DRAFT
+    // ALL FINISHED: ADVANCE TO DRAFT
     if (data.type === "INTERMISSION_START") {
       level = data.level;
       document.getElementById("death-screen").style.display = "none";
       triggerIntermission();
     }
 
-    // ALL FINISHED: ZERO ESCAPED -> TEAM WIPE
+    // MULTIPLAYER TEAM WIPE: RESET LEVEL TO 1
     if (data.type === "TEAM_WIPED") {
       phase = "TEAM_WIPED";
+      clearInterval(decayTimer);
       document.getElementById("wipe-level").innerText = data.level || level;
       document.getElementById("team-wipe-screen").style.display = "flex";
       document.getElementById("death-screen").style.display = "none";
@@ -318,6 +339,9 @@ function startMultiplayer() {
 
     if (data.type === "RETURN_TO_LOBBY") {
       phase = "LOBBY";
+      level = 1; // Reset to level 1 on client
+      coins = 0;
+      activeCurses.clear();
       document.getElementById("team-wipe-screen").style.display = "none";
       document.getElementById("death-screen").style.display = "none";
       document.getElementById("lobby-screen").style.display = "flex";
@@ -325,6 +349,7 @@ function startMultiplayer() {
       document.getElementById("lobby-ready-btn").className = "";
       serverPlayers = data.players || {};
       updateLobbyPlayerList();
+      updateUI();
     }
 
     if (data.type === "KICKED") {
@@ -375,15 +400,27 @@ function sendLobbyReady() {
   }
 }
 
+// LEVEL INITIALIZATION & REGENERATION
 function initLevel() {
   clearInterval(decayTimer);
   consumedDots.clear();
   isEscaped = false;
+
+  // Purge all old state completely
+  decayingTiles.clear();
+  bridgePlanks.clear();
+  yellowDots = [];
+  purpleDots = [];
+  coolButtons = [];
+  exit = null;
+  heat = 0;
+
   document.getElementById("overlay-screen").style.display = "none";
   document.getElementById("lobby-screen").style.display = "none";
   document.getElementById("death-screen").style.display = "none";
   document.getElementById("team-wipe-screen").style.display = "none";
 
+  // Dynamic grid expansion
   worldGrid = 24 + (level - 1) * 6;
   let mid = Math.floor(worldGrid / 2);
   
@@ -393,23 +430,17 @@ function initLevel() {
   camera.x = mid * TILE_SIZE;
   camera.y = mid * TILE_SIZE;
 
-  decayingTiles.clear();
-  bridgePlanks.clear();
-  yellowDots = [];
-  purpleDots = [];
-  coolButtons = [];
-  exit = null;
   phase = "COLLECT";
 
   dashCharges = upgrades.dash;
   currentShields = upgrades.shield;
   bridgeStamina = 100;
   isBridging = false;
-  heat = 0;
 
   rollCurses();
   setBanner(`Level ${level}: Clear red dots to unlock exit!`, "#ff5555");
 
+  // Re-generate fresh dots for new level
   normalDots = [];
   let dotCount = 6 + (level * 3);
   for (let i = 0; i < dotCount; i++) spawnDot(normalDots);
@@ -521,7 +552,7 @@ function tryShieldAbsorb(x, y) {
   return false;
 }
 
-// DRAFT SYSTEM
+// 3-CARD DRAFT SYSTEM
 const ALL_CURSES_POOL = [
   { id: "temperature", name: "Temperature", icon: "temperature", desc: "Hit coolant buttons or burn alive!" },
   { id: "nullscape", name: "Nullscape", icon: "nullscape", desc: "Purple rotten dots are fatal poison!" },
@@ -698,6 +729,7 @@ function finishDraftToReady() {
   btn.className = "";
 }
 
+// PROCEED TO NEXT LEVEL
 function toggleReadyVote() {
   if (isMultiplayer && socket) {
     socket.send(JSON.stringify({ type: "VOTE_READY" }));
@@ -705,6 +737,7 @@ function toggleReadyVote() {
     btn.innerText = "Ready! (Waiting for votes...)";
     btn.className = "ready";
   } else {
+    // SINGLEPLAYER LEVEL PROGRESSION FIX
     level++;
     initLevel();
   }
@@ -749,9 +782,11 @@ function stopBridging() {
   }
 }
 
-// PLAYER DEATH SCREEN MODAL
+// DEATH SYSTEM
 function triggerPlayerDeath(reason) {
-  snake = []; // remove from arena
+  phase = "GAMEOVER";
+  clearInterval(decayTimer);
+  snake = [];
 
   document.getElementById("death-reason").innerText = reason || "Crashed";
   document.getElementById("death-level").innerText = level;
@@ -769,10 +804,14 @@ function triggerPlayerDeath(reason) {
   }
 }
 
+// RESET LEVEL ON DEATH
 function handleDeathAction() {
   document.getElementById("death-screen").style.display = "none";
   if (!isMultiplayer) {
-    coins = 0; level = 1; purpleDotsEatenThisRun = 0;
+    // SINGLEPLAYER RESET LEVEL TO 1 FIX
+    coins = 0;
+    level = 1;
+    purpleDotsEatenThisRun = 0;
     upgrades = { shoes: 0, dash: 0, bridge: 0, poison: 0, eyes: 0, shield: 0, thermo: 0 };
     activeCurses.clear();
     initLevel();
@@ -783,7 +822,7 @@ function handleDeathAction() {
 
 function tick() {
   if (phase === "GAMEOVER" || phase === "INTERMISSION" || phase === "MENU" || phase === "LOBBY" || phase === "TEAM_WIPED") return;
-  if (isEscaped || snake.length === 0) return; // Escaped or dead players don't move
+  if (isEscaped || snake.length === 0) return;
 
   if (activeCurses.has("temperature")) {
     heat += 0.35;
@@ -850,7 +889,7 @@ function tick() {
   let tail = snake[snake.length - 1];
   bridgePlanks.delete(`${tail.x},${tail.y}`);
 
-  // Normal Dot Pickup
+  // Dot Pickup
   let eatenNormal = normalDots.findIndex(d => d.x === head.x && d.y === head.y);
   if (eatenNormal !== -1) {
     let dot = normalDots[eatenNormal];
@@ -868,15 +907,15 @@ function tick() {
     yellowDots.splice(eatenYellow, 1);
     coins += 10;
   } 
-  // TOUCH GOLD EXIT (INDIVIDUAL EXTRACTION)
+  // TOUCH EXIT
   else if (phase === "GREED" && exit && head.x === exit.x && head.y === exit.y) {
     if (isMultiplayer) {
       isEscaped = true;
-      snake = []; // Despawn body
+      snake = [];
       if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({ type: "TOUCH_EXIT" }));
       }
-      setBanner("YOU ESCAPED! Spectating remaining teammates...", "#4CAF50");
+      setBanner("YOU ESCAPED! Spectating teammates...", "#4CAF50");
     } else {
       return triggerIntermission();
     }
@@ -967,7 +1006,7 @@ function updatePanels() {
   }
 }
 
-// SPECTATOR CAMERA & RENDER LOOP
+// 60FPS CAMERA & DRAWING
 function render(timestamp) {
   if (phase === "MENU") return;
 
@@ -979,16 +1018,15 @@ function render(timestamp) {
     lastTick = timestamp;
   }
 
-  // Camera defaults to map center
   let targetCamX = (worldGrid * TILE_SIZE) / 2;
   let targetCamY = (worldGrid * TILE_SIZE) / 2;
 
-  // 1. Follow local snake if alive on board
+  // Track living snake
   if (snake && snake.length > 0) {
     targetCamX = snake[0].x * TILE_SIZE + TILE_SIZE / 2;
     targetCamY = snake[0].y * TILE_SIZE + TILE_SIZE / 2;
   } 
-  // 2. SPECTATOR MODE: If local snake dead/escaped, follow surviving teammate!
+  // Spectate surviving teammates
   else if (isMultiplayer) {
     const survivor = Object.values(serverPlayers).find(p => p.alive && !p.escaped && p.snake && p.snake.length > 0);
     if (survivor) {
@@ -1018,7 +1056,7 @@ function render(timestamp) {
     ctx.beginPath(); ctx.moveTo(0, i * TILE_SIZE); ctx.lineTo(worldGrid * TILE_SIZE, i * TILE_SIZE); ctx.stroke();
   }
 
-  // Decay Tiles
+  // Decay
   decayingTiles.forEach((tile, key) => {
     let [x, y] = key.split(",").map(Number);
     if (tile.stage === 1) ctx.fillStyle = "#3e3e50";
@@ -1046,7 +1084,7 @@ function render(timestamp) {
     ctx.beginPath(); ctx.arc(d.x * TILE_SIZE + TILE_SIZE / 2, d.y * TILE_SIZE + TILE_SIZE / 2, TILE_SIZE / 3.5, 0, Math.PI * 2); ctx.fill();
   });
 
-  // Poison Dots
+  // Poison
   ctx.fillStyle = "#9b59b6";
   purpleDots.forEach(d => {
     ctx.beginPath(); ctx.arc(d.x * TILE_SIZE + TILE_SIZE / 2, d.y * TILE_SIZE + TILE_SIZE / 2, TILE_SIZE / 3.2, 0, Math.PI * 2); ctx.fill();
@@ -1064,7 +1102,7 @@ function render(timestamp) {
     ctx.beginPath(); ctx.arc(d.x * TILE_SIZE + TILE_SIZE / 2, d.y * TILE_SIZE + TILE_SIZE / 2, TILE_SIZE / 2.8, 0, Math.PI * 2); ctx.fill();
   });
 
-  // Draw Local Player Snake
+  // Local Player
   if (snake && snake.length > 0) {
     snake.forEach((part, i) => {
       if (isPurpleKingUnlocked) {
@@ -1076,7 +1114,7 @@ function render(timestamp) {
     });
   }
 
-  // Draw Other Players
+  // Peers
   if (isMultiplayer) {
     Object.values(serverPlayers).forEach(p => {
       if (p.id !== myPlayerId && p.alive && !p.escaped && p.snake && p.snake.length > 0) {
