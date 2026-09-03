@@ -450,19 +450,20 @@ canvas {
 
 #death-screen {
   border: 2px solid #ff4757;
-  border-radius: 8px;
+  border-radius: 10px;
   margin: 20px;
 }
 
 #death-action-btn {
-  background: #3498db;
+  background: #e74c3c;
   border: none;
   color: white;
-  padding: 10px 24px;
+  padding: 10px 28px;
   border-radius: 6px;
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
+  transition: transform 0.15s;
 }
 #death-action-btn:hover {
   transform: scale(1.05);
