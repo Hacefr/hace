@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Void Snake</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <div id="main-layout">
+    
+    <!-- LEFT PANEL: UPGRADES -->
+    <div class="side-panel" id="upgrades-panel">
+      <div class="panel-title" style="color: #4CAF50;">⚡ UPGRADES</div>
+      <div class="panel-items" id="upgrades-list"></div>
+    </div>
+
+    <!-- CENTER GAME VIEWPORT -->
+    <div id="viewport-container">
+      <div id="hud">
+        <div class="badge" style="color: #4CAF50;">LVL <span id="level">1</span></div>
+        <div class="badge" style="color: #ff5555;">DOTS <span id="dots">0</span></div>
+        <div class="badge" style="color: #ffd700;">$ <span id="coins">0</span></div>
+      </div>
+
+      <!-- Heat Warning Bar (Revealed by Thermometer) -->
+      <div id="heat-bar-wrapper">
+        <div style="font-size: 9px; font-weight: bold; color: #ff6b81; margin-bottom: 2px;">HEAT WARNING (HIT ❄️)</div>
+        <div style="width: 100%; background: #333; border-radius: 6px;">
+          <div id="heat-fill"></div>
+        </div>
+      </div>
+
+      <!-- Ability Cooldowns Bar -->
+      <div id="ability-bar">
+        <div id="dash-hud" class="ability-slot">⚡ DASH: <span id="dash-val">LOCKED</span></div>
+        <div id="bridge-hud" class="ability-slot">🌉 BRIDGE: <span id="bridge-val">LOCKED</span></div>
+        <div id="shield-hud" class="ability-slot" style="display:none;">🛡️ SHIELD: <span id="shield-val">0</span></div>
+      </div>
+
+      <canvas id="game"></canvas>
+      <div id="banner">Use WASD or Arrow Keys</div>
+
+      <!-- INTERMISSION SCREEN -->
+      <div id="overlay-screen">
+        <h2 id="overlay-title">LEVEL COMPLETE!</h2>
+        <p id="overlay-subtitle">Catch your breath before the next round...</p>
+
+        <!-- Shop (Only shown on Shop levels) -->
+        <div class="shop-cards" id="shop-container" style="display: none;">
+          <div class="shop-card" id="card-shoes"></div>
+          <div class="shop-card" id="card-dash"></div>
+          <div class="shop-card" id="card-bridge"></div>
+          <div class="shop-card" id="card-poison"></div>
+          <div class="shop-card" id="card-eyes"></div>
+          <div class="shop-card" id="card-shield"></div>
+          <div class="shop-card" id="card-thermo"></div>
+        </div>
+
+        <!-- Majority Voting UI -->
+        <div id="vote-section">
+          <div id="vote-status">Ready to proceed: <span id="vote-count">0</span> / <span id="vote-total">3</span></div>
+          <div id="vote-desc" style="font-size: 11px; color: #888; margin-top: 4px;">(Need 2/3 votes to launch)</div>
+          <button id="ready-btn" onclick="toggleReadyVote()">Ready Up</button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- RIGHT PANEL: CURSES -->
+    <div class="side-panel" id="curses-panel">
+      <div class="panel-title" style="color: #ff4757;">💀 ACTIVE CURSES</div>
+      <div class="panel-items" id="curses-list"></div>
+    </div>
+
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
