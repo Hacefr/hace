@@ -62,13 +62,12 @@ function logout() {
 }
 
 // ==========================================
-// 2. CHANGELOG LOADER (READS CHANGELOG.JSON)
+// 2. CHANGELOG LOADER (CHANGELOG.JSON)
 // ==========================================
 let cachedChangelog = null;
 
 async function checkChangelog() {
   try {
-    // Cache buster ensures players always get fresh patch notes instantly
     const res = await fetch(`changelog.json?t=${Date.now()}`);
     if (res.ok) {
       cachedChangelog = await res.json();
@@ -109,7 +108,7 @@ function closeChangelog() {
 }
 
 // ==========================================
-// 3. CORE GAME ENGINE & MULTIPLAYER LOBBY
+// 3. GAME ENGINE & MULTIPLAYER LOBBY
 // ==========================================
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
@@ -132,7 +131,7 @@ let yellowDots = [];
 let coolButtons = []; 
 let exit = null;
 let decayingTiles = new Map();
-let phase = "MENU";
+let phase = "MENU"; // "MENU", "LOBBY", "COLLECT", "GREED", "INTERMISSION", "GAMEOVER", "TEAM_WIPED"
 let coins = 0;
 let level = 1;
 
@@ -183,6 +182,7 @@ function startSingleplayer() {
   document.getElementById("main-layout").style.display = "flex";
   document.getElementById("chat-container").style.display = "none";
   document.getElementById("lobby-screen").style.display = "none";
+  document.getElementById("team-wipe-screen").style.display = "none";
   phase = "COLLECT";
   resizeCanvas();
   initLevel();
@@ -197,6 +197,7 @@ function startMultiplayer() {
   document.getElementById("main-menu").style.display = "none";
   document.getElementById("main-layout").style.display = "flex";
   document.getElementById("chat-container").style.display = "flex";
+  document.getElementById("team-wipe-screen").style.display = "none";
   
   phase = "LOBBY";
   const lobby = document.getElementById("lobby-screen");
@@ -235,6 +236,7 @@ function startMultiplayer() {
       consumedDots.clear();
       document.getElementById("lobby-screen").style.display = "none";
       document.getElementById("overlay-screen").style.display = "none";
+      document.getElementById("team-wipe-screen").style.display = "none";
 
       level = data.level;
       worldGrid = data.worldGrid;
@@ -273,8 +275,33 @@ function startMultiplayer() {
       setBanner("EXIT OPEN! ESCAPE OR GREED FOR GOLD!", "#ffd700");
     }
 
+    // MULTIPLAYER EXIT TRIGGERED: Open Draft
     if (data.type === "INTERMISSION_START") {
+      level = data.level;
       triggerIntermission();
+    }
+
+    // MULTIPLAYER TEAM WIPE
+    if (data.type === "TEAM_WIPED") {
+      phase = "TEAM_WIPED";
+      document.getElementById("wipe-level").innerText = data.level || level;
+      document.getElementById("team-wipe-screen").style.display = "flex";
+      document.getElementById("overlay-screen").style.display = "none";
+    }
+
+    if (data.type === "RETURN_TO_LOBBY") {
+      phase = "LOBBY";
+      document.getElementById("team-wipe-screen").style.display = "none";
+      document.getElementById("lobby-screen").style.display = "flex";
+      document.getElementById("lobby-ready-btn").innerText = "Ready Up";
+      document.getElementById("lobby-ready-btn").className = "";
+      serverPlayers = data.players || {};
+      updateLobbyPlayerList();
+    }
+
+    if (data.type === "KICKED") {
+      alert(data.reason || "Kicked for inactivity.");
+      location.reload();
     }
 
     if (data.type === "CHAT") {
@@ -325,6 +352,7 @@ function initLevel() {
   consumedDots.clear();
   document.getElementById("overlay-screen").style.display = "none";
   document.getElementById("lobby-screen").style.display = "none";
+  document.getElementById("team-wipe-screen").style.display = "none";
 
   worldGrid = 24 + (level - 1) * 6;
   let mid = Math.floor(worldGrid / 2);
@@ -434,7 +462,7 @@ function processDecay() {
       let [tx, ty] = key.split(",").map(Number);
       if (snake[0].x === tx && snake[0].y === ty && !isBridging) {
         if (!tryShieldAbsorb(tx, ty)) {
-          gameOver("Swallowed by the void!");
+          handlePlayerDeath("Swallowed by the void!");
         }
       }
     }
@@ -693,15 +721,26 @@ function stopBridging() {
   }
 }
 
+function handlePlayerDeath(reason) {
+  if (isMultiplayer && socket && socket.readyState === WebSocket.OPEN) {
+    // Notify Server of death (No respawns!)
+    socket.send(JSON.stringify({ type: "PLAYER_DIED", reason }));
+    setBanner(`YOU DIED: ${reason} (Spectating team...)`, "#ff3333");
+    snake = []; // remove body so you can spectate
+  } else {
+    gameOver(reason);
+  }
+}
+
 function tick() {
-  if (phase === "GAMEOVER" || phase === "INTERMISSION" || phase === "MENU" || phase === "LOBBY") return;
+  if (phase === "GAMEOVER" || phase === "INTERMISSION" || phase === "MENU" || phase === "LOBBY" || phase === "TEAM_WIPED") return;
 
   if (activeCurses.has("temperature")) {
     heat += 0.35;
     if (upgrades.thermo > 0) {
       document.getElementById("heat-fill").style.width = `${Math.min(100, heat)}%`;
     }
-    if (heat >= 100) return gameOver("OVERHEATED! You burned to ashes!");
+    if (heat >= 100) return handlePlayerDeath("Burned alive by the heat!");
   }
 
   let drainRate = activeCurses.has("nothing") ? 8 : 4;
@@ -724,12 +763,12 @@ function tick() {
 
   const head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
 
-  if (head.x < 0 || head.x >= worldGrid || head.y < 0 || head.y >= worldGrid) return gameOver("Crashed into world border!");
-  if (snake.some(seg => seg.x === head.x && seg.y === head.y)) return gameOver("Bit your own tail!");
+  if (head.x < 0 || head.x >= worldGrid || head.y < 0 || head.y >= worldGrid) return handlePlayerDeath("Crashed into world border!");
+  if (snake.some(seg => seg.x === head.x && seg.y === head.y)) return handlePlayerDeath("Bit your own tail!");
 
   let headTile = decayingTiles.get(`${head.x},${head.y}`);
   if (headTile && headTile.stage === 3 && !isBridging) {
-    if (!tryShieldAbsorb(head.x, head.y)) return gameOver("Swallowed by the void!");
+    if (!tryShieldAbsorb(head.x, head.y)) return handlePlayerDeath("Swallowed by the void!");
   }
 
   let purpleIdx = purpleDots.findIndex(p => p.x === head.x && p.y === head.y);
@@ -746,7 +785,7 @@ function tick() {
         setBanner("ACHIEVEMENT UNLOCKED: PURPLE KING SKIN!", "#ffd700");
       }
     } else {
-      return gameOver("Touched a poisonous Nullscape dot!");
+      return handlePlayerDeath("Touched a poisonous Nullscape dot!");
     }
   }
 
@@ -763,6 +802,7 @@ function tick() {
   let tail = snake[snake.length - 1];
   bridgePlanks.delete(`${tail.x},${tail.y}`);
 
+  // Normal Dot Pickup
   let eatenNormal = normalDots.findIndex(d => d.x === head.x && d.y === head.y);
   if (eatenNormal !== -1) {
     let dot = normalDots[eatenNormal];
@@ -780,8 +820,14 @@ function tick() {
     yellowDots.splice(eatenYellow, 1);
     coins += 10;
   } 
+  // TOUCH GOLD EXIT (Multiplayer & Solo)
   else if (phase === "GREED" && exit && head.x === exit.x && head.y === exit.y) {
-    return triggerIntermission();
+    if (isMultiplayer && socket && socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type: "TOUCH_EXIT" }));
+    } else {
+      return triggerIntermission();
+    }
+    return;
   } 
   else {
     snake.pop();
@@ -960,15 +1006,17 @@ function render(timestamp) {
     ctx.beginPath(); ctx.arc(d.x * TILE_SIZE + TILE_SIZE / 2, d.y * TILE_SIZE + TILE_SIZE / 2, TILE_SIZE / 2.8, 0, Math.PI * 2); ctx.fill();
   });
 
-  // Local Player
-  snake.forEach((part, i) => {
-    if (isPurpleKingUnlocked) {
-      ctx.fillStyle = i === 0 ? "#8e44ad" : "#a29bfe";
-    } else {
-      ctx.fillStyle = i === 0 ? "#2ed573" : "#7bed9f";
-    }
-    ctx.fillRect(part.x * TILE_SIZE + 1, part.y * TILE_SIZE + 1, TILE_SIZE - 2, TILE_SIZE - 2);
-  });
+  // Local Player (only rendered if alive)
+  if (snake && snake.length > 0) {
+    snake.forEach((part, i) => {
+      if (isPurpleKingUnlocked) {
+        ctx.fillStyle = i === 0 ? "#8e44ad" : "#a29bfe";
+      } else {
+        ctx.fillStyle = i === 0 ? "#2ed573" : "#7bed9f";
+      }
+      ctx.fillRect(part.x * TILE_SIZE + 1, part.y * TILE_SIZE + 1, TILE_SIZE - 2, TILE_SIZE - 2);
+    });
+  }
 
   // Peers
   if (isMultiplayer) {
@@ -1018,7 +1066,7 @@ window.addEventListener("keydown", (e) => {
     return;
   }
 
-  if (phase === "MENU" || phase === "LOBBY") return;
+  if (phase === "MENU" || phase === "LOBBY" || phase === "TEAM_WIPED") return;
 
   if (e.code === "Space") {
     if (phase === "GAMEOVER") {
