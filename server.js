@@ -6,7 +6,7 @@ const wss = new WebSocketServer({ port: PORT });
 console.log(`Universal Multiplayer Server running on port ${PORT}`);
 
 let players = {};
-let phase = "LOBBY";
+let phase = "LOBBY"; // "LOBBY", "COLLECT", "GREED", "INTERMISSION", "TEAM_WIPED"
 let level = 1;
 let worldGrid = 24;
 let normalDots = [];
@@ -17,6 +17,9 @@ let whiteTiles = new Set();
 let activeCurses = new Set();
 let nextPlayerId = 1;
 
+// 5-Minute Inactivity limit (300,000 milliseconds)
+const INACTIVITY_LIMIT = 5 * 60 * 1000;
+
 function broadcast(data) {
   const msg = JSON.stringify(data);
   wss.clients.forEach((client) => {
@@ -24,6 +27,19 @@ function broadcast(data) {
       client.send(msg);
     }
   });
+}
+
+function resetServer() {
+  level = 1;
+  phase = "LOBBY";
+  worldGrid = 24;
+  whiteTiles.clear();
+  activeCurses.clear();
+  normalDots = [];
+  purpleDots = [];
+  yellowDots = [];
+  exit = null;
+  console.log("Server completely reset to clean Level 1 Lobby.");
 }
 
 function startLevel() {
@@ -70,6 +86,29 @@ function startLevel() {
   });
 }
 
+function checkTeamWipe() {
+  const playerList = Object.values(players);
+  if (playerList.length === 0) return;
+
+  const allDead = playerList.every(p => !p.alive);
+  if (allDead && (phase === "COLLECT" || phase === "GREED")) {
+    phase = "TEAM_WIPED";
+    console.log(`Team wipe on Level ${level}.`);
+    broadcast({
+      type: "TEAM_WIPED",
+      level,
+      message: "EVERYONE DIED! The team has been eliminated."
+    });
+
+    // Automatically return to Lobby after 6 seconds
+    setTimeout(() => {
+      resetServer();
+      Object.values(players).forEach(p => { p.ready = false; p.alive = false; });
+      broadcast({ type: "RETURN_TO_LOBBY", players });
+    }, 6000);
+  }
+}
+
 wss.on('connection', (ws) => {
   const id = "p_" + (nextPlayerId++);
   console.log(`Player connected: ${id}`);
@@ -80,7 +119,9 @@ wss.on('connection', (ws) => {
     snake: [],
     dir: { x: 0, y: 0 },
     alive: false,
-    ready: false
+    ready: false,
+    lastActive: Date.now(),
+    ws
   };
 
   ws.send(JSON.stringify({
@@ -88,27 +129,31 @@ wss.on('connection', (ws) => {
     yourId: id,
     worldGrid,
     level,
-    players
+    phase,
+    players: getPublicPlayers()
   }));
 
-  broadcast({ type: "PLAYER_UPDATE", players });
+  broadcast({ type: "PLAYER_UPDATE", players: getPublicPlayers() });
 
   ws.on('message', (message) => {
     try {
       const data = JSON.parse(message);
+      if (!players[id]) return;
 
-      if (data.type === "MOVE" && players[id] && players[id].alive) {
+      // Update player activity timestamp
+      players[id].lastActive = Date.now();
+
+      if (data.type === "MOVE" && players[id].alive) {
         players[id].dir = data.dir;
       }
 
-      // INSTANT DOT REMOVAL HANDLER (Stops ghost dots!)
       if (data.type === "EAT_DOT") {
         let idx = normalDots.findIndex(d => d.x === data.x && d.y === data.y);
         if (idx !== -1) {
           normalDots.splice(idx, 1);
           broadcast({ type: "DOT_REMOVED", x: data.x, y: data.y });
 
-          if (normalDots.length === 0) {
+          if (normalDots.length === 0 && phase === "COLLECT") {
             phase = "GREED";
             exit = {
               x: Math.floor(Math.random() * (worldGrid - 4)) + 2,
@@ -119,7 +164,24 @@ wss.on('connection', (ws) => {
         }
       }
 
-      if (data.type === "VOTE_READY" && players[id]) {
+      // INSTANT MULTIPLAYER EXIT TRIGGER
+      if (data.type === "TOUCH_EXIT" && phase === "GREED") {
+        phase = "INTERMISSION";
+        broadcast({ type: "INTERMISSION_START", level });
+      }
+
+      if (data.type === "PLAYER_DIED") {
+        players[id].alive = false;
+        broadcast({
+          type: "PLAYER_FELL",
+          id,
+          name: players[id].name,
+          reason: data.reason || "died"
+        });
+        checkTeamWipe();
+      }
+
+      if (data.type === "VOTE_READY") {
         players[id].ready = !players[id].ready;
         checkVotes();
       }
@@ -127,7 +189,7 @@ wss.on('connection', (ws) => {
       if (data.type === "CHAT") {
         broadcast({
           type: "CHAT",
-          sender: players[id] ? players[id].name : "Unknown",
+          sender: players[id].name,
           text: data.text
         });
       }
@@ -138,11 +200,15 @@ wss.on('connection', (ws) => {
   });
 
   ws.on('close', () => {
+    console.log(`Player disconnected: ${id}`);
     delete players[id];
-    broadcast({ type: "PLAYER_UPDATE", players });
+
+    // RESET SERVER ONCE EVERYONE LEAVES
     if (Object.keys(players).length === 0) {
-      level = 1;
-      phase = "LOBBY";
+      resetServer();
+    } else {
+      broadcast({ type: "PLAYER_UPDATE", players: getPublicPlayers() });
+      checkTeamWipe();
     }
   });
 });
@@ -157,20 +223,52 @@ function checkVotes() {
     readyCount,
     total: activeList.length,
     needed,
-    players
+    players: getPublicPlayers()
   });
 
   if (readyCount >= needed && activeList.length > 0) {
+    if (phase === "INTERMISSION") level++;
     startLevel();
   }
 }
 
-// 100ms Server Game Sync
+// INACTIVITY CHECKER: Kicks players after 5 minutes of no actions
+setInterval(() => {
+  const now = Date.now();
+  Object.values(players).forEach(p => {
+    if (now - p.lastActive > INACTIVITY_LIMIT) {
+      console.log(`Kicking ${p.name} for 5m of inactivity.`);
+      p.ws.send(JSON.stringify({
+        type: "KICKED",
+        reason: "You were kicked due to 5 minutes of inactivity."
+      }));
+      p.ws.close();
+    }
+  });
+}, 15000);
+
+// Helper to scrub circular WS reference from broadcast
+function getPublicPlayers() {
+  let clean = {};
+  Object.keys(players).forEach(k => {
+    clean[k] = {
+      id: players[k].id,
+      name: players[k].name,
+      snake: players[k].snake,
+      dir: players[k].dir,
+      alive: players[k].alive,
+      ready: players[k].ready
+    };
+  });
+  return clean;
+}
+
+// 100ms Game Loop
 setInterval(() => {
   if (phase === "COLLECT" || phase === "GREED") {
     broadcast({
       type: "TICK",
-      players,
+      players: getPublicPlayers(),
       normalDots
     });
   }
