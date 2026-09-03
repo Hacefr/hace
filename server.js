@@ -17,7 +17,6 @@ let whiteTiles = new Set();
 let activeCurses = new Set();
 let nextPlayerId = 1;
 
-// 5-Minute Inactivity limit (300,000 milliseconds)
 const INACTIVITY_LIMIT = 5 * 60 * 1000;
 
 function broadcast(data) {
@@ -39,7 +38,7 @@ function resetServer() {
   purpleDots = [];
   yellowDots = [];
   exit = null;
-  console.log("Server completely reset to clean Level 1 Lobby.");
+  console.log("Server reset to clean Level 1 Lobby.");
 }
 
 function startLevel() {
@@ -57,8 +56,10 @@ function startLevel() {
   let mid = Math.floor(worldGrid / 2);
   let offset = 0;
 
+  // Revive and spawn all players
   Object.values(players).forEach(p => {
     p.alive = true;
+    p.escaped = false;
     p.ready = false;
     p.dir = { x: 0, y: -1 };
     p.snake = [
@@ -82,30 +83,39 @@ function startLevel() {
     worldGrid,
     normalDots,
     purpleDots,
-    players
+    players: getPublicPlayers()
   });
 }
 
-function checkTeamWipe() {
+// CHECK IF EVERYONE HAS EITHER ESCAPED OR DIED
+function checkRoundCompletion() {
   const playerList = Object.values(players);
   if (playerList.length === 0) return;
 
-  const allDead = playerList.every(p => !p.alive);
-  if (allDead && (phase === "COLLECT" || phase === "GREED")) {
-    phase = "TEAM_WIPED";
-    console.log(`Team wipe on Level ${level}.`);
-    broadcast({
-      type: "TEAM_WIPED",
-      level,
-      message: "EVERYONE DIED! The team has been eliminated."
-    });
+  const allFinished = playerList.every(p => p.escaped || !p.alive);
 
-    // Automatically return to Lobby after 6 seconds
-    setTimeout(() => {
-      resetServer();
-      Object.values(players).forEach(p => { p.ready = false; p.alive = false; });
-      broadcast({ type: "RETURN_TO_LOBBY", players });
-    }, 6000);
+  if (allFinished && (phase === "COLLECT" || phase === "GREED")) {
+    const anyEscaped = playerList.some(p => p.escaped);
+
+    if (anyEscaped) {
+      // At least 1 player escaped: TEAM WINS THE LEVEL!
+      phase = "INTERMISSION";
+      broadcast({ type: "INTERMISSION_START", level });
+    } else {
+      // Everyone died: TEAM WIPE
+      phase = "TEAM_WIPED";
+      broadcast({
+        type: "TEAM_WIPED",
+        level,
+        message: "EVERYONE DIED! No players escaped."
+      });
+
+      setTimeout(() => {
+        resetServer();
+        Object.values(players).forEach(p => { p.ready = false; p.alive = false; p.escaped = false; });
+        broadcast({ type: "RETURN_TO_LOBBY", players: getPublicPlayers() });
+      }, 6000);
+    }
   }
 }
 
@@ -119,6 +129,7 @@ wss.on('connection', (ws) => {
     snake: [],
     dir: { x: 0, y: 0 },
     alive: false,
+    escaped: false,
     ready: false,
     lastActive: Date.now(),
     ws
@@ -140,10 +151,9 @@ wss.on('connection', (ws) => {
       const data = JSON.parse(message);
       if (!players[id]) return;
 
-      // Update player activity timestamp
       players[id].lastActive = Date.now();
 
-      if (data.type === "MOVE" && players[id].alive) {
+      if (data.type === "MOVE" && players[id].alive && !players[id].escaped) {
         players[id].dir = data.dir;
       }
 
@@ -164,21 +174,36 @@ wss.on('connection', (ws) => {
         }
       }
 
-      // INSTANT MULTIPLAYER EXIT TRIGGER
-      if (data.type === "TOUCH_EXIT" && phase === "GREED") {
-        phase = "INTERMISSION";
-        broadcast({ type: "INTERMISSION_START", level });
+      // INDIVIDUAL PLAYER ESCAPES THROUGH EXIT
+      if (data.type === "TOUCH_EXIT" && phase === "GREED" && players[id].alive && !players[id].escaped) {
+        players[id].escaped = true;
+        players[id].alive = false; // Despawn body from board
+        players[id].snake = [];
+
+        broadcast({
+          type: "PLAYER_ESCAPED",
+          id,
+          name: players[id].name,
+          players: getPublicPlayers()
+        });
+
+        checkRoundCompletion();
       }
 
-      if (data.type === "PLAYER_DIED") {
+      // INDIVIDUAL PLAYER DEATH
+      if (data.type === "PLAYER_DIED" && players[id].alive) {
         players[id].alive = false;
+        players[id].snake = [];
+
         broadcast({
           type: "PLAYER_FELL",
           id,
           name: players[id].name,
-          reason: data.reason || "died"
+          reason: data.reason || "crashed",
+          players: getPublicPlayers()
         });
-        checkTeamWipe();
+
+        checkRoundCompletion();
       }
 
       if (data.type === "VOTE_READY") {
@@ -200,15 +225,14 @@ wss.on('connection', (ws) => {
   });
 
   ws.on('close', () => {
-    console.log(`Player disconnected: ${id}`);
+    console.log(`Player left: ${id}`);
     delete players[id];
 
-    // RESET SERVER ONCE EVERYONE LEAVES
     if (Object.keys(players).length === 0) {
       resetServer();
     } else {
       broadcast({ type: "PLAYER_UPDATE", players: getPublicPlayers() });
-      checkTeamWipe();
+      checkRoundCompletion();
     }
   });
 });
@@ -232,12 +256,11 @@ function checkVotes() {
   }
 }
 
-// INACTIVITY CHECKER: Kicks players after 5 minutes of no actions
+// 5-Minute Inactivity Kick
 setInterval(() => {
   const now = Date.now();
   Object.values(players).forEach(p => {
     if (now - p.lastActive > INACTIVITY_LIMIT) {
-      console.log(`Kicking ${p.name} for 5m of inactivity.`);
       p.ws.send(JSON.stringify({
         type: "KICKED",
         reason: "You were kicked due to 5 minutes of inactivity."
@@ -247,7 +270,6 @@ setInterval(() => {
   });
 }, 15000);
 
-// Helper to scrub circular WS reference from broadcast
 function getPublicPlayers() {
   let clean = {};
   Object.keys(players).forEach(k => {
@@ -257,13 +279,14 @@ function getPublicPlayers() {
       snake: players[k].snake,
       dir: players[k].dir,
       alive: players[k].alive,
+      escaped: players[k].escaped,
       ready: players[k].ready
     };
   });
   return clean;
 }
 
-// 100ms Game Loop
+// 100ms Server Sync
 setInterval(() => {
   if (phase === "COLLECT" || phase === "GREED") {
     broadcast({
