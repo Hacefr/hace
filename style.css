@@ -148,7 +148,36 @@ body {
   font-size: 11px;
   cursor: pointer;
 }
-#logout-btn:hover { border-color: #ff5555; color: #ff5555; }
+#logout-btn:hover {
+  border-color: #ff5555;
+  color: #ff5555;
+}
+
+/* ALPHA DISCLAIMER */
+#alpha-disclaimer {
+  font-size: 11px;
+  color: #777777;
+  text-align: center;
+  line-height: 1.5;
+  max-width: 380px;
+  margin-top: 14px;
+  padding: 8px 14px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+}
+
+/* VERSION TAG (BOTTOM-RIGHT) */
+#version-tag {
+  position: absolute;
+  bottom: 16px;
+  right: 20px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #555555;
+  letter-spacing: 1px;
+  pointer-events: none;
+}
 
 /* GAMEPLAY VIEWPORT & PANELS */
 #main-layout {
@@ -156,7 +185,8 @@ body {
   align-items: center;
   justify-content: center;
   gap: 20px;
-  width: 100vw; height: 100vh;
+  width: 100vw;
+  height: 100vh;
   padding: 10px;
   background: #09090d;
 }
@@ -234,7 +264,8 @@ body {
 }
 
 canvas {
-  width: 100%; height: 100%;
+  width: 100%;
+  height: 100%;
   display: block;
   background: #0e0e14;
 }
@@ -242,7 +273,8 @@ canvas {
 #hud {
   position: absolute;
   top: 10px; left: 10px; right: 10px;
-  display: flex; justify-content: space-between;
+  display: flex;
+  justify-content: space-between;
   pointer-events: none;
   font-size: clamp(10px, 2.3vmin, 15px);
   font-weight: 700;
@@ -260,7 +292,8 @@ canvas {
 #ability-bar {
   position: absolute;
   bottom: 12px; left: 12px;
-  display: flex; gap: 8px;
+  display: flex;
+  gap: 8px;
   z-index: 10;
   pointer-events: none;
 }
@@ -306,7 +339,8 @@ canvas {
   z-index: 10;
 }
 #heat-fill {
-  width: 0%; height: 8px;
+  width: 0%;
+  height: 8px;
   background: linear-gradient(90deg, #ffd32a, #ff4757);
   border-radius: 6px;
   transition: width 0.1s linear;
