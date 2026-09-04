@@ -40,6 +40,13 @@
     <div class="menu-options">
       <button class="menu-btn" onclick="startSingleplayer()">Singleplayer</button>
       <button class="menu-btn" onclick="startMultiplayer()" style="color: #3498db;">Multiplayer</button>
+      
+      <!-- ACCOUNT BUTTON (Only visible when logged in, hidden for Guest) -->
+      <button class="menu-btn" id="account-btn" onclick="openAccountModal()" style="display: none; color: #ffd700;">Account</button>
+
+      <!-- SETTINGS BUTTON -->
+      <button class="menu-btn" onclick="openSettingsModal()">Settings</button>
+
       <button class="menu-btn disabled" disabled>Skins</button>
       <button class="menu-btn patch-notes-btn" onclick="openChangelog()">Patch Notes</button>
 
@@ -50,6 +57,51 @@
     </div>
 
     <div id="version-tag" onclick="openChangelog()">vA1.0.1</div>
+  </div>
+
+  <!-- ACCOUNT MODAL -->
+  <div id="account-modal" style="display: none;">
+    <div class="account-box">
+      <h2 id="acc-modal-user" style="color: #ffd700; margin-bottom: 4px;">Account</h2>
+      <div style="font-size: 14px; font-weight: bold; margin-bottom: 12px;">LEVEL <span id="acc-modal-level" style="color: #4CAF50;">1</span></div>
+
+      <div class="exp-bar-wrapper">
+        <div id="exp-bar-fill"></div>
+      </div>
+      <div id="exp-bar-text">0 / 60 EXP (+15 EXP per floor)</div>
+
+      <button class="modal-close-btn" onclick="closeAccountModal()">Close</button>
+    </div>
+  </div>
+
+  <!-- SETTINGS MODAL -->
+  <div id="settings-modal" style="display: none;">
+    <div class="settings-box">
+      <h2 style="font-size: 20px; font-weight: 800; margin-bottom: 16px;">SETTINGS</h2>
+
+      <!-- Setting 1: Show Account Level in game -->
+      <label class="setting-row">
+        <span>Show account level in game</span>
+        <input type="checkbox" id="set-show-level" onchange="saveSettings()" />
+      </label>
+
+      <!-- Setting 2: Player Opacity -->
+      <div class="setting-row-col">
+        <div style="display: flex; justify-content: space-between; width: 100%;">
+          <span>Player opacity</span>
+          <span id="set-opacity-val">100%</span>
+        </div>
+        <input type="range" id="set-opacity-slider" min="20" max="100" value="100" oninput="updateOpacityDisplay()" onchange="saveSettings()" />
+      </div>
+
+      <!-- Setting 3: Show usernames in game -->
+      <label class="setting-row">
+        <span>Show usernames in game</span>
+        <input type="checkbox" id="set-show-names" onchange="saveSettings()" />
+      </label>
+
+      <button class="modal-close-btn" onclick="closeSettingsModal()">Save & Close</button>
+    </div>
   </div>
 
   <!-- CHANGELOG MODAL -->
