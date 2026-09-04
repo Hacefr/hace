@@ -5,7 +5,6 @@ const wss = new WebSocketServer({ port: PORT });
 
 console.log(`Universal Multiplayer Server running on port ${PORT}`);
 
-// SERVER-SIDED ACCOUNTS DATABASE (Tracks levels and EXP securely)
 let serverAccounts = {}; // username -> { password, accountLevel, exp }
 
 let players = {};
@@ -32,7 +31,7 @@ function broadcast(data) {
 }
 
 function getExpRequired(lvl) {
-  return lvl * 60; // Level 1->2 takes 60 EXP (4 floors), Level 2->3 takes 120 EXP, etc.
+  return lvl * 60;
 }
 
 function awardAccountExp(username, amount) {
@@ -44,10 +43,9 @@ function awardAccountExp(username, amount) {
   while (acc.exp >= getExpRequired(acc.accountLevel)) {
     acc.exp -= getExpRequired(acc.accountLevel);
     acc.accountLevel++;
-    console.log(`User ${username} leveled up to Account Level ${acc.accountLevel}!`);
+    console.log(`User ${username} reached Account Level ${acc.accountLevel}!`);
   }
 
-  // Find player socket and send updated profile
   Object.values(players).forEach(p => {
     if (p.accountUser === username && p.ws && p.ws.readyState === WebSocket.OPEN) {
       p.accountLevel = acc.accountLevel;
@@ -135,7 +133,6 @@ function checkRoundCompletion() {
     const anyEscaped = playerList.some(p => p.escaped);
 
     if (anyEscaped) {
-      // Award 15 EXP to all authenticated players who survived or participated!
       playerList.forEach(p => {
         if (p.accountUser) awardAccountExp(p.accountUser, 15);
       });
@@ -194,7 +191,6 @@ wss.on('connection', (ws) => {
 
       players[id].lastActive = Date.now();
 
-      // SERVER AUTHENTICATION & ACCOUNT DATA
       if (data.type === "LOGIN" || data.type === "SIGNUP") {
         const u = data.username.trim();
         if (!serverAccounts[u]) {
@@ -215,7 +211,9 @@ wss.on('connection', (ws) => {
         broadcast({ type: "PLAYER_UPDATE", players: getPublicPlayers() });
       }
 
-      if (data.type === "MOVE" && players[id].alive && !players[id].escaped) {
+      // REAL-TIME MULTIPLAYER MOVEMENT SYNC FIX
+      if (data.type === "SYNC_SNAKE" && players[id].alive && !players[id].escaped) {
+        players[id].snake = data.snake;
         players[id].dir = data.dir;
       }
 
@@ -347,6 +345,7 @@ function getPublicPlayers() {
   return clean;
 }
 
+// 60ms Server Broadcast Loop
 setInterval(() => {
   if (phase === "COLLECT" || phase === "GREED") {
     broadcast({
@@ -355,4 +354,4 @@ setInterval(() => {
       normalDots
     });
   }
-}, 100);
+}, 60);
