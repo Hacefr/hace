@@ -1,14 +1,35 @@
 // ==========================================
-// 1. ACCOUNT & AUTHENTICATION SYSTEM
+// 1. ACCOUNT, SETTINGS & AUTHENTICATION
 // ==========================================
 let currentUser = localStorage.getItem("saved_username") || null;
 let currentAuthMode = "login";
+
+// SERVER-SYNCED ACCOUNT PROGRESSION
+let accountStats = {
+  accountLevel: 1,
+  exp: 0,
+  expNeeded: 60
+};
+
+// USER SETTINGS (Default configs)
+let userSettings = {
+  showLevel: true,
+  playerOpacity: 1.0,
+  showNames: true
+};
+
+// Load saved settings from storage
+const savedSettings = localStorage.getItem("void_snake_settings");
+if (savedSettings) {
+  try { userSettings = JSON.parse(savedSettings); } catch(e) {}
+}
 
 window.addEventListener("DOMContentLoaded", () => {
   if (currentUser) {
     proceedToMainMenu(currentUser);
   }
   checkChangelog();
+  applySettingsToUI();
 });
 
 function showAuthForm(mode) {
@@ -29,7 +50,8 @@ function backToAuthChoices() {
 }
 
 function playAsGuest() {
-  proceedToMainMenu("Guest_" + Math.floor(Math.random() * 899 + 100));
+  currentUser = "Guest_" + Math.floor(Math.random() * 899 + 100);
+  proceedToMainMenu(currentUser);
 }
 
 function handleAuthSubmit(e) {
@@ -42,6 +64,16 @@ function handleAuthSubmit(e) {
     return;
   }
 
+  // Connect briefly to send credentials to Render
+  if (!socket || socket.readyState !== WebSocket.OPEN) {
+    socket = new WebSocket("wss://hace-hsrp.onrender.com");
+    socket.onopen = () => {
+      socket.send(JSON.stringify({ type: currentAuthMode.toUpperCase(), username: user, password: pass }));
+    };
+  } else {
+    socket.send(JSON.stringify({ type: currentAuthMode.toUpperCase(), username: user, password: pass }));
+  }
+
   localStorage.setItem("saved_username", user);
   proceedToMainMenu(user);
 }
@@ -51,6 +83,10 @@ function proceedToMainMenu(username) {
   document.getElementById("auth-screen").style.display = "none";
   document.getElementById("main-menu").style.display = "flex";
   document.getElementById("current-username").innerText = username;
+
+  // Reveal Account button only for logged in users (hide for guest)
+  const isGuest = username.startsWith("Guest_");
+  document.getElementById("account-btn").style.display = isGuest ? "none" : "block";
 }
 
 function logout() {
@@ -58,7 +94,49 @@ function logout() {
   currentUser = null;
   document.getElementById("main-menu").style.display = "none";
   document.getElementById("auth-screen").style.display = "flex";
+  document.getElementById("account-btn").style.display = "none";
   backToAuthChoices();
+}
+
+// ACCOUNT PROGRESSION MODAL
+function openAccountModal() {
+  document.getElementById("acc-modal-user").innerText = currentUser;
+  document.getElementById("acc-modal-level").innerText = accountStats.accountLevel;
+  
+  const pct = Math.min(100, Math.floor((accountStats.exp / accountStats.expNeeded) * 100));
+  document.getElementById("exp-bar-fill").style.width = pct + "%";
+  document.getElementById("exp-bar-text").innerText = `${accountStats.exp} / ${accountStats.expNeeded} EXP (+15 EXP per floor)`;
+
+  document.getElementById("account-modal").style.display = "flex";
+}
+function closeAccountModal() {
+  document.getElementById("account-modal").style.display = "none";
+}
+
+// SETTINGS MODAL
+function openSettingsModal() {
+  applySettingsToUI();
+  document.getElementById("settings-modal").style.display = "flex";
+}
+function closeSettingsModal() {
+  saveSettings();
+  document.getElementById("settings-modal").style.display = "none";
+}
+function applySettingsToUI() {
+  document.getElementById("set-show-level").checked = userSettings.showLevel;
+  document.getElementById("set-show-names").checked = userSettings.showNames;
+  document.getElementById("set-opacity-slider").value = Math.floor(userSettings.playerOpacity * 100);
+  document.getElementById("set-opacity-val").innerText = Math.floor(userSettings.playerOpacity * 100) + "%";
+}
+function updateOpacityDisplay() {
+  const val = document.getElementById("set-opacity-slider").value;
+  document.getElementById("set-opacity-val").innerText = val + "%";
+}
+function saveSettings() {
+  userSettings.showLevel = document.getElementById("set-show-level").checked;
+  userSettings.showNames = document.getElementById("set-show-names").checked;
+  userSettings.playerOpacity = parseInt(document.getElementById("set-opacity-slider").value, 10) / 100;
+  localStorage.setItem("void_snake_settings", JSON.stringify(userSettings));
 }
 
 // ==========================================
@@ -132,14 +210,14 @@ let yellowDots = [];
 let coolButtons = []; 
 let exit = null;
 let decayingTiles = new Map();
-let phase = "MENU"; // "MENU", "LOBBY", "COLLECT", "GREED", "INTERMISSION", "GAMEOVER", "TEAM_WIPED"
+let phase = "MENU";
 let coins = 0;
 let level = 1;
 
 let camera = { x: 0, y: 0 };
 let consumedDots = new Set();
 
-// UPGRADES
+// UPGRADES INVENTORY
 let upgrades = { shoes: 0, dash: 0, bridge: 0, poison: 0, eyes: 0, shield: 0, thermo: 0 };
 let currentShields = 0;
 let dashCharges = 0;
@@ -176,14 +254,35 @@ function resizeCanvas() {
 }
 window.addEventListener("resize", resizeCanvas);
 
+// TOTAL PURGE / RUN RESET
+function resetRunState() {
+  level = 1;
+  coins = 0;
+  purpleDotsEatenThisRun = 0;
+  upgrades = { shoes: 0, dash: 0, bridge: 0, poison: 0, eyes: 0, shield: 0, thermo: 0 };
+  currentShields = 0;
+  dashCharges = 0;
+  if (dashCooldownTimer) clearInterval(dashCooldownTimer);
+  dashCooldownTimer = null;
+  isBridging = false;
+  bridgeStamina = 100;
+  bridgeCooldown = 0;
+  bridgePlanks.clear();
+  activeCurses.clear();
+  heat = 0;
+  consumedDots.clear();
+  exit = null;
+
+  document.getElementById("heat-bar-wrapper").style.display = "none";
+  updatePanels();
+  updateUI();
+}
+
 // SINGLEPLAYER
 function startSingleplayer() {
   isMultiplayer = false;
   isEscaped = false;
-  level = 1;
-  coins = 0;
-  upgrades = { shoes: 0, dash: 0, bridge: 0, poison: 0, eyes: 0, shield: 0, thermo: 0 };
-  activeCurses.clear();
+  resetRunState();
 
   document.getElementById("main-menu").style.display = "none";
   document.getElementById("main-layout").style.display = "flex";
@@ -202,9 +301,7 @@ function startMultiplayer() {
   isMultiplayer = true;
   isLobbyReady = false;
   isEscaped = false;
-  level = 1;
-  consumedDots.clear();
-  activeCurses.clear();
+  resetRunState();
 
   document.getElementById("main-menu").style.display = "none";
   document.getElementById("main-layout").style.display = "flex";
@@ -226,6 +323,10 @@ function startMultiplayer() {
 
   socket.onopen = () => {
     document.getElementById("lobby-status").innerText = "Connected! Click Ready to launch.";
+    // If logged in, authenticate connection
+    if (currentUser && !currentUser.startsWith("Guest_")) {
+      socket.send(JSON.stringify({ type: "LOGIN", username: currentUser, password: "" }));
+    }
   };
 
   socket.onmessage = (event) => {
@@ -239,19 +340,23 @@ function startMultiplayer() {
       updateLobbyPlayerList();
     }
 
+    if (data.type === "AUTH_SUCCESS" || data.type === "ACCOUNT_UPDATE") {
+      accountStats.accountLevel = data.accountLevel;
+      accountStats.exp = data.exp;
+      accountStats.expNeeded = data.expNeeded;
+    }
+
     if (data.type === "PLAYER_UPDATE" || data.type === "VOTE_UPDATE") {
       if (data.players) serverPlayers = data.players;
       updateLobbyPlayerList();
     }
 
-    // NEW LEVEL START (MULTIPLAYER BOARD PURGE & REGEN)
     if (data.type === "LEVEL_START") {
       phase = "COLLECT";
       isEscaped = false;
       consumedDots.clear();
       clearInterval(decayTimer);
 
-      // Purge old floor artifacts
       exit = null;
       decayingTiles.clear();
       bridgePlanks.clear();
@@ -320,14 +425,12 @@ function startMultiplayer() {
       }
     }
 
-    // ALL FINISHED: ADVANCE TO DRAFT
     if (data.type === "INTERMISSION_START") {
       level = data.level;
       document.getElementById("death-screen").style.display = "none";
       triggerIntermission();
     }
 
-    // MULTIPLAYER TEAM WIPE: RESET LEVEL TO 1
     if (data.type === "TEAM_WIPED") {
       phase = "TEAM_WIPED";
       clearInterval(decayTimer);
@@ -335,13 +438,12 @@ function startMultiplayer() {
       document.getElementById("team-wipe-screen").style.display = "flex";
       document.getElementById("death-screen").style.display = "none";
       document.getElementById("overlay-screen").style.display = "none";
+      resetRunState();
     }
 
     if (data.type === "RETURN_TO_LOBBY") {
       phase = "LOBBY";
-      level = 1; // Reset to level 1 on client
-      coins = 0;
-      activeCurses.clear();
+      resetRunState();
       document.getElementById("team-wipe-screen").style.display = "none";
       document.getElementById("death-screen").style.display = "none";
       document.getElementById("lobby-screen").style.display = "flex";
@@ -349,7 +451,6 @@ function startMultiplayer() {
       document.getElementById("lobby-ready-btn").className = "";
       serverPlayers = data.players || {};
       updateLobbyPlayerList();
-      updateUI();
     }
 
     if (data.type === "KICKED") {
@@ -375,14 +476,16 @@ function updateLobbyPlayerList() {
   const playersList = Object.values(serverPlayers);
   playersList.forEach(p => {
     const isMe = p.id === myPlayerId;
-    const displayName = isMe ? `${currentUser || p.name} (You)` : p.name;
+    let label = isMe ? `${currentUser || p.name} (You)` : p.name;
+    if (userSettings.showLevel && p.accountLevel) label = `[Lv.${p.accountLevel}] ` + label;
+
     const readyState = p.ready ? 
       `<span class="lobby-ready-tag" style="background:#2ecc71; color:#000;">READY</span>` : 
       `<span class="lobby-ready-tag" style="background:#e74c3c;">WAITING</span>`;
 
     container.innerHTML += `
       <div class="lobby-player-row">
-        <span>${displayName}</span>
+        <span>${label}</span>
         ${readyState}
       </div>
     `;
@@ -400,13 +503,12 @@ function sendLobbyReady() {
   }
 }
 
-// LEVEL INITIALIZATION & REGENERATION
+// INITIALIZE FLOOR
 function initLevel() {
   clearInterval(decayTimer);
   consumedDots.clear();
   isEscaped = false;
 
-  // Purge all old state completely
   decayingTiles.clear();
   bridgePlanks.clear();
   yellowDots = [];
@@ -420,7 +522,6 @@ function initLevel() {
   document.getElementById("death-screen").style.display = "none";
   document.getElementById("team-wipe-screen").style.display = "none";
 
-  // Dynamic grid expansion
   worldGrid = 24 + (level - 1) * 6;
   let mid = Math.floor(worldGrid / 2);
   
@@ -440,7 +541,6 @@ function initLevel() {
   rollCurses();
   setBanner(`Level ${level}: Clear red dots to unlock exit!`, "#ff5555");
 
-  // Re-generate fresh dots for new level
   normalDots = [];
   let dotCount = 6 + (level * 3);
   for (let i = 0; i < dotCount; i++) spawnDot(normalDots);
@@ -729,7 +829,6 @@ function finishDraftToReady() {
   btn.className = "";
 }
 
-// PROCEED TO NEXT LEVEL
 function toggleReadyVote() {
   if (isMultiplayer && socket) {
     socket.send(JSON.stringify({ type: "VOTE_READY" }));
@@ -737,7 +836,6 @@ function toggleReadyVote() {
     btn.innerText = "Ready! (Waiting for votes...)";
     btn.className = "ready";
   } else {
-    // SINGLEPLAYER LEVEL PROGRESSION FIX
     level++;
     initLevel();
   }
@@ -804,16 +902,10 @@ function triggerPlayerDeath(reason) {
   }
 }
 
-// RESET LEVEL ON DEATH
 function handleDeathAction() {
   document.getElementById("death-screen").style.display = "none";
   if (!isMultiplayer) {
-    // SINGLEPLAYER RESET LEVEL TO 1 FIX
-    coins = 0;
-    level = 1;
-    purpleDotsEatenThisRun = 0;
-    upgrades = { shoes: 0, dash: 0, bridge: 0, poison: 0, eyes: 0, shield: 0, thermo: 0 };
-    activeCurses.clear();
+    resetRunState();
     initLevel();
   } else {
     setBanner("Spectating survivors... wait for extraction.", "#ffd700");
@@ -937,6 +1029,9 @@ function updateUI() {
   if (upgrades.dash > 0) {
     dashSlot.classList.add("active");
     document.getElementById("dash-val").innerText = `${dashCharges} / ${upgrades.dash}`;
+  } else {
+    dashSlot.classList.remove("active");
+    document.getElementById("dash-val").innerText = "LOCKED";
   }
 
   const bridgeSlot = document.getElementById("bridge-hud");
@@ -944,6 +1039,9 @@ function updateUI() {
     bridgeSlot.classList.add("active");
     let txt = bridgeCooldown > 0 ? `COOLING (${Math.ceil(bridgeCooldown)}%)` : `${Math.ceil(bridgeStamina)}%`;
     document.getElementById("bridge-val").innerText = txt;
+  } else {
+    bridgeSlot.classList.remove("active");
+    document.getElementById("bridge-val").innerText = "LOCKED";
   }
 
   const shieldSlot = document.getElementById("shield-hud");
@@ -951,6 +1049,8 @@ function updateUI() {
     shieldSlot.style.display = "block";
     shieldSlot.classList.add("active");
     document.getElementById("shield-val").innerText = `${currentShields} / ${upgrades.shield}`;
+  } else {
+    shieldSlot.style.display = "none";
   }
 }
 
@@ -1006,7 +1106,7 @@ function updatePanels() {
   }
 }
 
-// 60FPS CAMERA & DRAWING
+// 60FPS CAMERA & CANVAS RENDERING (WITH SETTINGS APPLIED)
 function render(timestamp) {
   if (phase === "MENU") return;
 
@@ -1021,12 +1121,10 @@ function render(timestamp) {
   let targetCamX = (worldGrid * TILE_SIZE) / 2;
   let targetCamY = (worldGrid * TILE_SIZE) / 2;
 
-  // Track living snake
   if (snake && snake.length > 0) {
     targetCamX = snake[0].x * TILE_SIZE + TILE_SIZE / 2;
     targetCamY = snake[0].y * TILE_SIZE + TILE_SIZE / 2;
   } 
-  // Spectate surviving teammates
   else if (isMultiplayer) {
     const survivor = Object.values(serverPlayers).find(p => p.alive && !p.escaped && p.snake && p.snake.length > 0);
     if (survivor) {
@@ -1112,18 +1210,48 @@ function render(timestamp) {
       }
       ctx.fillRect(part.x * TILE_SIZE + 1, part.y * TILE_SIZE + 1, TILE_SIZE - 2, TILE_SIZE - 2);
     });
+
+    // Local Name Tag
+    if (userSettings.showNames) {
+      ctx.save();
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 11px sans-serif";
+      ctx.textAlign = "center";
+      let tag = currentUser || "You";
+      if (userSettings.showLevel && accountStats.accountLevel) tag = `[Lv.${accountStats.accountLevel}] ` + tag;
+      ctx.fillText(tag, snake[0].x * TILE_SIZE + TILE_SIZE / 2, snake[0].y * TILE_SIZE - 6);
+      ctx.restore();
+    }
   }
 
-  // Peers
+  // Peers (With Player Opacity setting applied!)
   if (isMultiplayer) {
+    ctx.save();
+    ctx.globalAlpha = userSettings.playerOpacity; // APPLY OPACITY SETTING
+
     Object.values(serverPlayers).forEach(p => {
       if (p.id !== myPlayerId && p.alive && !p.escaped && p.snake && p.snake.length > 0) {
         p.snake.forEach((part, i) => {
           ctx.fillStyle = i === 0 ? "#e74c3c" : "#ff7675";
           ctx.fillRect(part.x * TILE_SIZE + 1, part.y * TILE_SIZE + 1, TILE_SIZE - 2, TILE_SIZE - 2);
         });
+
+        // Peer Name Tags
+        if (userSettings.showNames) {
+          ctx.save();
+          ctx.globalAlpha = 1.0;
+          ctx.fillStyle = "#ffffff";
+          ctx.font = "bold 11px sans-serif";
+          ctx.textAlign = "center";
+          let peerTag = p.name;
+          if (userSettings.showLevel && p.accountLevel) peerTag = `[Lv.${p.accountLevel}] ` + peerTag;
+          ctx.fillText(peerTag, p.snake[0].x * TILE_SIZE + TILE_SIZE / 2, p.snake[0].y * TILE_SIZE - 6);
+          ctx.restore();
+        }
       }
     });
+
+    ctx.restore();
   }
 
   ctx.strokeStyle = "#ff3838";
