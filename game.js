@@ -11,14 +11,13 @@ let accountStats = {
   expNeeded: 60
 };
 
-// USER SETTINGS (Default configs)
+// USER SETTINGS
 let userSettings = {
   showLevel: true,
   playerOpacity: 1.0,
   showNames: true
 };
 
-// Load saved settings from storage
 const savedSettings = localStorage.getItem("void_snake_settings");
 if (savedSettings) {
   try { userSettings = JSON.parse(savedSettings); } catch(e) {}
@@ -64,7 +63,6 @@ function handleAuthSubmit(e) {
     return;
   }
 
-  // Connect briefly to send credentials to Render
   if (!socket || socket.readyState !== WebSocket.OPEN) {
     socket = new WebSocket("wss://hace-hsrp.onrender.com");
     socket.onopen = () => {
@@ -84,7 +82,6 @@ function proceedToMainMenu(username) {
   document.getElementById("main-menu").style.display = "flex";
   document.getElementById("current-username").innerText = username;
 
-  // Reveal Account button only for logged in users (hide for guest)
   const isGuest = username.startsWith("Guest_");
   document.getElementById("account-btn").style.display = isGuest ? "none" : "block";
 }
@@ -254,7 +251,7 @@ function resizeCanvas() {
 }
 window.addEventListener("resize", resizeCanvas);
 
-// TOTAL PURGE / RUN RESET
+// PURGE STATE / RESET
 function resetRunState() {
   level = 1;
   coins = 0;
@@ -323,7 +320,6 @@ function startMultiplayer() {
 
   socket.onopen = () => {
     document.getElementById("lobby-status").innerText = "Connected! Click Ready to launch.";
-    // If logged in, authenticate connection
     if (currentUser && !currentUser.startsWith("Guest_")) {
       socket.send(JSON.stringify({ type: "LOGIN", username: currentUser, password: "" }));
     }
@@ -389,6 +385,7 @@ function startMultiplayer() {
       updateUI();
     }
 
+    // MULTIPLAYER LIVE SYNC: Updates peer snakes so they visibly move!
     if (data.type === "TICK") {
       serverPlayers = data.players;
       if (data.normalDots) {
@@ -503,7 +500,6 @@ function sendLobbyReady() {
   }
 }
 
-// INITIALIZE FLOOR
 function initLevel() {
   clearInterval(decayTimer);
   consumedDots.clear();
@@ -854,6 +850,11 @@ function useDash() {
     snake.pop();
   }
 
+  // Send new position immediately
+  if (isMultiplayer && socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({ type: "SYNC_SNAKE", snake, dir }));
+  }
+
   if (!dashCooldownTimer) {
     let rechargeTime = activeCurses.has("nothing") ? 12000 : 7000;
     dashCooldownTimer = setInterval(() => {
@@ -936,10 +937,6 @@ function tick() {
   dir = nextDir;
   if (dir.x === 0 && dir.y === 0) return;
 
-  if (isMultiplayer && socket && socket.readyState === WebSocket.OPEN) {
-    socket.send(JSON.stringify({ type: "MOVE", dir }));
-  }
-
   const head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
 
   if (head.x < 0 || head.x >= worldGrid || head.y < 0 || head.y >= worldGrid) return triggerPlayerDeath("Crashed into world border!");
@@ -1015,6 +1012,15 @@ function tick() {
   } 
   else {
     snake.pop();
+  }
+
+  // REAL-TIME MULTIPLAYER MOVEMENT BROADCAST
+  if (isMultiplayer && socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({
+      type: "SYNC_SNAKE",
+      snake: snake,
+      dir: dir
+    }));
   }
 
   updateUI();
@@ -1106,7 +1112,7 @@ function updatePanels() {
   }
 }
 
-// 60FPS CAMERA & CANVAS RENDERING (WITH SETTINGS APPLIED)
+// 60FPS CAMERA & CANVAS RENDERING
 function render(timestamp) {
   if (phase === "MENU") return;
 
@@ -1211,7 +1217,6 @@ function render(timestamp) {
       ctx.fillRect(part.x * TILE_SIZE + 1, part.y * TILE_SIZE + 1, TILE_SIZE - 2, TILE_SIZE - 2);
     });
 
-    // Local Name Tag
     if (userSettings.showNames) {
       ctx.save();
       ctx.fillStyle = "#ffffff";
@@ -1224,10 +1229,10 @@ function render(timestamp) {
     }
   }
 
-  // Peers (With Player Opacity setting applied!)
+  // Peers (With Real-Time Motion & Opacity!)
   if (isMultiplayer) {
     ctx.save();
-    ctx.globalAlpha = userSettings.playerOpacity; // APPLY OPACITY SETTING
+    ctx.globalAlpha = userSettings.playerOpacity;
 
     Object.values(serverPlayers).forEach(p => {
       if (p.id !== myPlayerId && p.alive && !p.escaped && p.snake && p.snake.length > 0) {
@@ -1236,7 +1241,6 @@ function render(timestamp) {
           ctx.fillRect(part.x * TILE_SIZE + 1, part.y * TILE_SIZE + 1, TILE_SIZE - 2, TILE_SIZE - 2);
         });
 
-        // Peer Name Tags
         if (userSettings.showNames) {
           ctx.save();
           ctx.globalAlpha = 1.0;
